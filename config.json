@@ -1,0 +1,14 @@
+{
+    "videos_per_day": 2,
+    "auto_upload": false,
+    "video_duration": 40,
+    "testing_mode": true,
+    "categories": [
+        "politics",
+        "economy",
+        "tech",
+        "crime",
+        "social",
+        "global"
+    ]
+}
