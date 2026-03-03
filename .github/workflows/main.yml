@@ -14,58 +14,77 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      # 1️⃣ تحميل المشروع
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
+      # 2️⃣ تثبيت FFmpeg
       - name: Install FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install ffmpeg -y
+          sudo apt-get install -y ffmpeg
 
+      # 3️⃣ إعداد Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
+      # 4️⃣ تثبيت المكتبات
       - name: Install Dependencies
         run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install moviepy imageio imageio-ffmpeg numpy
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+          pip install moviepy==1.0.3 imageio imageio-ffmpeg numpy
 
+      # 5️⃣ إنشاء مجلد output
       - name: Create Output Folder
         run: mkdir -p output
 
-        - name: Run System
-        run: python main.py
+      # 6️⃣ تشغيل النظام
+      - name: Run System
+        run: |
+          echo "Starting main.py..."
+          python main.py
 
-      # 🔎 البحث عن أي فيديو في المشروع
-      - name: Locate Video File
+      # 7️⃣ عرض الملفات (للتشخيص)
+      - name: Debug - Show Files
+        run: |
+          echo "===== ROOT FILES ====="
+          ls -la
+          echo "===== OUTPUT FILES ====="
+          ls -la output || true
+
+      # 8️⃣ البحث عن أي فيديو
+      - name: Locate Video
         run: |
           echo "Searching for video files..."
           find . -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" \) > video_list.txt
           cat video_list.txt
 
           if [ ! -s video_list.txt ]; then
-            echo "❌ No video file found!"
+            echo "❌ ERROR: No video file was generated!"
             exit 1
           fi
 
-      # 📦 نقل الفيديو إلى مجلد artifact
+      # 9️⃣ تجهيز artifact
       - name: Prepare Artifact
         run: |
           mkdir -p artifact
           while read file; do
             cp "$file" artifact/
           done < video_list.txt
+          echo "===== ARTIFACT CONTENT ====="
           ls -la artifact
 
-      # ⬆️ رفع الفيديو
+      # 🔟 رفع الفيديو
       - name: Upload Video Artifact
         uses: actions/upload-artifact@v4
         with:
           name: generated-video
           path: artifact/
 
+      # 1️⃣1️⃣ Commit آمن
       - name: Commit Changes
         run: |
           git config --global user.name "news-bot"
