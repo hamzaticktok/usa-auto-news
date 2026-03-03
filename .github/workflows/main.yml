@@ -11,10 +11,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install ffmpeg -y
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -25,13 +28,19 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run System
-     
         run: python main.py
 
-      - name: Commit Changes
+      - name: Upload Generated Videos
+        uses: actions/upload-artifact@v3
+        with:
+          name: generated-videos
+          path: |
+            *.mp4
+
+      - name: Commit JSON Updates
         run: |
           git config --global user.name "news-bot"
           git config --global user.email "bot@example.com"
-          git add .
-          git commit -m "Auto generated update" || echo "No changes"
+          git add performance_data.json used.txt logs.txt || true
+          git commit -m "Auto update data files" || echo "No changes"
           git push || echo "No push"
