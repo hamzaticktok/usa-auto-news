@@ -34,7 +34,6 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || true
           pip install moviepy==1.0.3 imageio imageio-ffmpeg numpy
 
       # 5️⃣ إنشاء مجلد output
@@ -45,11 +44,9 @@ jobs:
       - name: Run main.py
         run: python main.py
 
-      # 7️⃣ عرض الملفات للتشخيص
-      - name: Debug - Show Files
-        run: |
-          echo "===== OUTPUT FILES ====="
-          ls -la output || true
+      # 7️⃣ عرض الملفات في مجلد output للتأكد
+      - name: Check Output Folder
+        run: ls -la output/
 
       # 8️⃣ البحث عن أي فيديو جديد
       - name: Locate Video
@@ -57,7 +54,6 @@ jobs:
           echo "Searching for video files..."
           find output -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" \) > video_list.txt
           cat video_list.txt
-
           if [ ! -s video_list.txt ]; then
             echo "❌ ERROR: No video file was generated!"
             exit 1
@@ -79,13 +75,3 @@ jobs:
         with:
           name: generated-videos
           path: artifact/
-
-      # 1️⃣1️⃣ Commit آمن (اختياري)
-      - name: Commit Changes
-        run: |
-          git config --global user.name "news-bot"
-          git config --global user.email "bot@example.com"
-          git add .
-          if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "Auto generated video update"
-            git push
