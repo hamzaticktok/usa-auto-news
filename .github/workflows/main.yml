@@ -1,88 +1,66 @@
-import feedparser
-import random
-import json
-import os
-from datetime import datetime
-from gtts import gTTS
-from moviepy.editor import *
-import numpy as np
+name: Global AI News Network
 
-RSS = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+on:
+  schedule:
+    - cron: '0 14 * * *'
+    - cron: '0 20 * * *'
+  workflow_dispatch:
 
-def load_config():
-    with open("config.json","r") as f:
-        return json.load(f)
+permissions:
+  contents: write
 
-def log_error(e):
-    with open("logs.txt","a") as f:
-        f.write(str(e) + "\n")
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-def create_dynamic_background(duration):
+    steps:
+      - uses: actions/checkout@v3
 
-    def make_frame(t):
-        color_shift = int((t * 20) % 255)
-        frame = np.zeros((1920,1080,3), dtype=np.uint8)
-        frame[:,:,0] = (10 + color_shift) % 255
-        frame[:,:,1] = (30 + color_shift*2) % 255
-        frame[:,:,2] = (60 + color_shift*3) % 255
-        return frame
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install ffmpeg -y
 
-    return VideoClip(make_frame, duration=duration)
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-try:
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install moviepy imageio imageio-ffmpeg numpy
 
-    config = load_config()
-    feed = feedparser.parse(RSS)
+      - name: Create Output Folder
+        run: mkdir -p output
 
-    if not os.path.exists("used.txt"):
-        open("used.txt","w").close()
+      - name: Run System
+        run: python main.py
 
-    with open("used.txt","r") as f:
-        used_titles = f.read()
+      # 🔎 عرض الملفات لمعرفة هل الفيديو تم إنشاؤه
+      - name: Show Generated Files
+        run: |
+          echo "Root files:"
+          ls -la
+          echo "Output folder:"
+          ls -la output || true
 
-    count = 0
+      # ✅ رفع الفيديو كـ Artifact (بدون ignore)
+      - name: Upload Video Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-video
+          path: |
+            output/*.mp4
+            *.mp4
 
-    for entry in feed.entries:
-
-        if count >= config["videos_per_day"]:
-            break
-
-        if entry.title in used_titles:
-            continue
-
-        news_title = entry.title
-
-        with open("used.txt","a") as f:
-            f.write(news_title + "\n")
-
-        script = f"""
-        Breaking News Update.
-
-        {news_title}.
-
-        Stay tuned for more updates from the United States.
-        """
-
-        tts = gTTS(script, lang="en")
-        voice_file = f"voice_{count}.mp3"
-        tts.save(voice_file)
-
-        audio = AudioFileClip(voice_file)
-        duration = audio.duration
-
-        background = create_dynamic_background(duration)
-        background = background.set_audio(audio)
-
-        output_file = f"final_{count}.mp4"
-
-        background.write_videofile(
-            output_file,
-            fps=24,
-            codec="libx264",
-            audio_codec="aac"
-        )
-
-        count += 1
-
-except Exception as e:
-    log_error(e)
+      - name: Commit Changes
+        run: |
+          git config --global user.name "news-bot"
+          git config --global user.email "bot@example.com"
+          git add .
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "Auto generated update"
+            git push
+          fi
