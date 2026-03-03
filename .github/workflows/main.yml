@@ -25,6 +25,11 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run System
+      - name: Upload Video Artifact
+  uses: actions/upload-artifact@v3
+  with:
+    name: generated-videos
+    path: "*.mp4"
         run: python main.py
 
       - name: Commit Changes
