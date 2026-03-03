@@ -35,25 +35,36 @@ jobs:
       - name: Create Output Folder
         run: mkdir -p output
 
-      - name: Run System
+        - name: Run System
         run: python main.py
 
-      # 🔎 عرض الملفات لمعرفة هل الفيديو تم إنشاؤه
-      - name: Show Generated Files
+      # 🔎 البحث عن أي فيديو في المشروع
+      - name: Locate Video File
         run: |
-          echo "Root files:"
-          ls -la
-          echo "Output folder:"
-          ls -la output || true
+          echo "Searching for video files..."
+          find . -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" \) > video_list.txt
+          cat video_list.txt
 
-      # ✅ رفع الفيديو كـ Artifact (بدون ignore)
+          if [ ! -s video_list.txt ]; then
+            echo "❌ No video file found!"
+            exit 1
+          fi
+
+      # 📦 نقل الفيديو إلى مجلد artifact
+      - name: Prepare Artifact
+        run: |
+          mkdir -p artifact
+          while read file; do
+            cp "$file" artifact/
+          done < video_list.txt
+          ls -la artifact
+
+      # ⬆️ رفع الفيديو
       - name: Upload Video Artifact
         uses: actions/upload-artifact@v4
         with:
           name: generated-video
-          path: |
-            output/*.mp4
-            *.mp4
+          path: artifact/
 
       - name: Commit Changes
         run: |
