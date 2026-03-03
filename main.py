@@ -8,7 +8,7 @@ from moviepy.editor import (
 from datetime import datetime
 
 # ===== إعداد NewsAPI =====
-API_KEY = "YOUR_NEWSAPI_KEY"
+API_KEY = "YOUR_NEWSAPI_KEY"  # ضع مفتاح NewsAPI هنا
 URL = f"https://newsapi.org/v2/top-headlines?country=us&pageSize=10&apiKey={API_KEY}"
 
 # مجلد الإخراج
@@ -30,6 +30,8 @@ response = requests.get(URL)
 articles = response.json().get("articles", [])
 
 print(f"📰 Total articles fetched: {len(articles)}")
+print(f"🎵 Using music: {music_path}")
+print(f"📷 Logo path exists: {os.path.exists(logo_path)}")
 
 short_clips = []
 long_clips = []
