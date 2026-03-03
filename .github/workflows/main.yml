@@ -1,8 +1,8 @@
-name: USA Trends Video Generator
+name: USA Trends Daily Video Generator
 
 on:
   schedule:
-    - cron: '0 14 * * *'  # مرتين يوميًا، يمكن تعديل الوقت
+    - cron: '0 14 * * *'  # مرتين يوميًا
     - cron: '0 20 * * *'
   workflow_dispatch:
 
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ سحب ملفات المشروع
+      # 1️⃣ سحب المشروع
       - name: Checkout Repository
         uses: actions/checkout@v3
 
@@ -42,46 +42,26 @@ jobs:
       - name: Check Output Folder
         run: ls -la output/
 
-      # 7️⃣ البحث عن فيديوهات Shorts
-      - name: Locate Shorts Video
+      # 7️⃣ رفع فيديوهات Shorts كـ artifact
+      - name: Upload Shorts Artifact
         run: |
           find output -type f -iname "usa_trends_shorts_*.mp4" > shorts_list.txt
-          cat shorts_list.txt
-          if [ ! -s shorts_list.txt ]; then
-            echo "❌ No Shorts video found!"
-            exit 1
-          fi
-
-      # 8️⃣ البحث عن الفيديو الطويل
-      - name: Locate Long Video
-        run: |
-          find output -type f -iname "usa_trends_long_*.mp4" > long_list.txt
-          cat long_list.txt
-          if [ ! -s long_list.txt ]; then
-            echo "❌ No Long video found!"
-            exit 1
-          fi
-
-      # 9️⃣ رفع فيديوهات Shorts كـ artifact
-      - name: Upload Shorts Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: usa-trends-shorts
-          path: shorts_list.txt
-          # نسخ الفيديوهات
-          if: always()
-        run: |
           mkdir -p artifact_shorts
           while read file; do cp "$file" artifact_shorts/; done < shorts_list.txt
           ls -la artifact_shorts
-
-      # 🔟 رفع الفيديو الطويل كـ artifact
-      - name: Upload Long Video Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: usa-trends-long
-          path: long_list.txt
+          name: usa-trends-shorts
+          path: artifact_shorts
+
+      # 8️⃣ رفع الفيديو الطويل كـ artifact
+      - name: Upload Long Video Artifact
         run: |
+          find output -type f -iname "usa_trends_long_*.mp4" > long_list.txt
           mkdir -p artifact_long
           while read file; do cp "$file" artifact_long/; done < long_list.txt
           ls -la artifact_long
+        uses: actions/upload-artifact@v4
+        with:
+          name: usa-trends-long
+          path: artifact_long
