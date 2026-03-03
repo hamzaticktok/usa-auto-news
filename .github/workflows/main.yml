@@ -94,3 +94,13 @@ jobs:
             git commit -m "Auto generated update"
             git push
           fi
+          from moviepy.editor import ColorClip
+
+print("Creating test video...")
+
+clip = ColorClip(size=(720, 1280), color=(255, 0, 0))
+clip = clip.set_duration(5)
+
+clip.write_videofile("output/test.mp4", fps=24)
+
+print("Test video created successfully!")
