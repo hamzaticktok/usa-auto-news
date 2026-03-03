@@ -1,4 +1,4 @@
-name: USA Trends Full Video Generator
+name: USA Trends Complete Video Generator
 
 on:
   schedule:
@@ -20,59 +20,61 @@ jobs:
     if: github.ref == 'refs/heads/${{ github.event.inputs.branch || github.ref_name }}' || github.event_name != 'workflow_dispatch'
 
     steps:
-      # 1️⃣ Checkout Repository
+      # Checkout
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch || github.ref_name }}
 
-      # 2️⃣ تثبيت FFmpeg
+      # تثبيت FFmpeg
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      # 3️⃣ Setup Python
+      # إعداد Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      # 4️⃣ Install Dependencies
+      # تثبيت المكتبات
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install moviepy imageio imageio-ffmpeg requests
 
-      # 5️⃣ Create Output Folder
+      # إنشاء مجلد الإخراج
       - name: Create Output Folder
         run: mkdir -p output
 
-      # 6️⃣ Run main.py
+      # تشغيل main.py
       - name: Run main.py
         run: python main.py
 
-      # 7️⃣ Check Output
+      # التحقق من الملفات
       - name: List Output Files
         run: ls -la output/
 
-      # 8️⃣ Upload Shorts Artifact
+      # رفع Shorts كـ artifact
       - name: Upload Shorts
         run: |
           find output -type f -iname "usa_trends_shorts_*.mp4" > shorts_list.txt
           mkdir -p artifact_shorts
           while read file; do cp "$file" artifact_shorts/; done < shorts_list.txt
+          ls -la artifact_shorts
         uses: actions/upload-artifact@v4
         with:
           name: usa-trends-shorts
           path: artifact_shorts
 
-      # 9️⃣ Upload Long Video Artifact
+      # رفع Long Video كـ artifact
       - name: Upload Long Video
         run: |
           find output -type f -iname "usa_trends_long_*.mp4" > long_list.txt
           mkdir -p artifact_long
           while read file; do cp "$file" artifact_long/; done < long_list.txt
+          ls -la artifact_long
         uses: actions/upload-artifact@v4
         with:
           name: usa-trends-long
