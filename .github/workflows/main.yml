@@ -1,8 +1,8 @@
-name: Global AI News Network
+name: USA Trends Video Generator
 
 on:
   schedule:
-    - cron: '0 14 * * *'
+    - cron: '0 14 * * *'  # مرتين يوميًا، يمكن تعديل الوقت
     - cron: '0 20 * * *'
   workflow_dispatch:
 
@@ -14,53 +14,74 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ سحب ملفات المشروع
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
+      # 2️⃣ إعداد Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
+      # 3️⃣ تثبيت المكتبات
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install moviepy==1.0.3 imageio imageio-ffmpeg numpy
+          pip install moviepy imageio imageio-ffmpeg requests
 
+      # 4️⃣ إنشاء مجلد output
       - name: Create Output Folder
         run: mkdir -p output
 
+      # 5️⃣ تشغيل main.py لإنشاء الفيديوهات
       - name: Run main.py
         run: python main.py
 
+      # 6️⃣ عرض محتويات output
       - name: Check Output Folder
         run: ls -la output/
 
-      - name: Locate Video Files
+      # 7️⃣ البحث عن فيديوهات Shorts
+      - name: Locate Shorts Video
         run: |
-          find output -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" \) > video_list.txt
-          cat video_list.txt
-          if [ ! -s video_list.txt ]; then
-            echo "❌ ERROR: No video file was generated!"
+          find output -type f -iname "usa_trends_shorts_*.mp4" > shorts_list.txt
+          cat shorts_list.txt
+          if [ ! -s shorts_list.txt ]; then
+            echo "❌ No Shorts video found!"
             exit 1
           fi
 
-      - name: Prepare Artifact
+      # 8️⃣ البحث عن الفيديو الطويل
+      - name: Locate Long Video
         run: |
-          mkdir -p artifact
-          while read file; do
-            cp "$file" artifact/
-          done < video_list.txt
-          echo "===== ARTIFACT CONTENT ====="
-          ls -la artifact
+          find output -type f -iname "usa_trends_long_*.mp4" > long_list.txt
+          cat long_list.txt
+          if [ ! -s long_list.txt ]; then
+            echo "❌ No Long video found!"
+            exit 1
+          fi
 
-      - name: Upload Video Artifact
+      # 9️⃣ رفع فيديوهات Shorts كـ artifact
+      - name: Upload Shorts Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: generated-videos
-          path: artifact/
+          name: usa-trends-shorts
+          path: shorts_list.txt
+          # نسخ الفيديوهات
+          if: always()
+        run: |
+          mkdir -p artifact_shorts
+          while read file; do cp "$file" artifact_shorts/; done < shorts_list.txt
+          ls -la artifact_shorts
+
+      # 🔟 رفع الفيديو الطويل كـ artifact
+      - name: Upload Long Video Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: usa-trends-long
+          path: long_list.txt
+        run: |
+          mkdir -p artifact_long
+          while read file; do cp "$file" artifact_long/; done < long_list.txt
+          ls -la artifact_long
