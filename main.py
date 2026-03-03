@@ -29,6 +29,8 @@ colors = ["white", "yellow", "cyan", "lime", "magenta"]
 response = requests.get(URL)
 articles = response.json().get("articles", [])
 
+print(f"📰 Total articles fetched: {len(articles)}")
+
 short_clips = []
 long_clips = []
 
@@ -36,7 +38,6 @@ for idx, article in enumerate(articles, start=1):
     title = article.get("title", "No Title")
     image_url = article.get("urlToImage")
 
-    # تنزيل الصورة
     image_path = f"temp_{idx}.jpg"
     if image_url:
         try:
@@ -46,18 +47,15 @@ for idx, article in enumerate(articles, start=1):
         except:
             image_path = None
 
-    # إعداد النص بلون عشوائي
     color = random.choice(colors)
-    txt_clip = TextClip(title, fontsize=40, color=color, size=(720, 1280), method="caption").set_duration(5)
-    txt_clip = txt_clip.crossfadein(0.5).crossfadeout(0.5)  # fade in/out
+    txt_clip = TextClip(title, fontsize=40, color=color, size=(720,1280), method="caption").set_duration(5)
+    txt_clip = txt_clip.crossfadein(0.5).crossfadeout(0.5)
 
-    # إعداد الصورة أو خلفية سوداء
     if image_path and os.path.exists(image_path):
         img_clip = ImageClip(image_path).set_duration(5).resize((720,1280)).fx(vfx.fadein, 0.5).fx(vfx.fadeout, 0.5)
     else:
         img_clip = TextClip("", fontsize=1, size=(720,1280), color="black").set_duration(5)
 
-    # إضافة شعار القناة
     if os.path.exists(logo_path):
         logo_clip = ImageClip(logo_path).set_duration(5).resize(width=100).set_position(("right","top"))
         video_clip = CompositeVideoClip([img_clip, txt_clip.set_position(("center","bottom")), logo_clip])
@@ -71,7 +69,7 @@ for idx, article in enumerate(articles, start=1):
 audio_clip = AudioFileClip(music_path) if music_path else None
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# Shorts
+# ---- Shorts ----
 if short_clips:
     short_video = concatenate_videoclips(short_clips, method="compose")
     if audio_clip:
@@ -79,8 +77,11 @@ if short_clips:
     short_output = f"output/usa_trends_shorts_{timestamp}.mp4"
     short_video.write_videofile(short_output, fps=24, codec="libx264")
     print(f"✅ Shorts video created: {short_output}")
+    print(f"   - Duration: {short_video.duration:.2f} seconds")
+    print(f"   - Number of articles: {len(short_clips)}")
+    print(f"   - File size: {os.path.getsize(short_output)/1024/1024:.2f} MB")
 
-# Long video
+# ---- Long Video ----
 if long_clips:
     long_video = concatenate_videoclips(long_clips, method="compose")
     if audio_clip:
@@ -88,3 +89,6 @@ if long_clips:
     long_output = f"output/usa_trends_long_{timestamp}.mp4"
     long_video.write_videofile(long_output, fps=24, codec="libx264")
     print(f"✅ Long video created: {long_output}")
+    print(f"   - Duration: {long_video.duration:.2f} seconds")
+    print(f"   - Number of articles: {len(long_clips)}")
+    print(f"   - File size: {os.path.getsize(long_output)/1024/1024:.2f} MB")
