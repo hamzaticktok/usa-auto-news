@@ -1,0 +1,36 @@
+name: Global AI News Network
+
+on:
+  schedule:
+    - cron: '0 14 * * *'
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install ffmpeg -y
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run System
+        run: python main.py
+
+      - name: Commit Changes
+        run: |
+          git config --global user.name "news-bot"
+          git config --global user.email "bot@example.com"
+          git add .
+          git commit -m "Auto generated update" || echo "No changes"
+          git push || echo "No push"
