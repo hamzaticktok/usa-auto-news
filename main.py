@@ -1,95 +1,82 @@
 import os
 import random
-import requests
-from moviepy.editor import (
-    ImageClip, TextClip, CompositeVideoClip, concatenate_videoclips,
-    AudioFileClip, vfx
-)
 from datetime import datetime
+from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips, afx
 
-# NewsAPI
-API_KEY = "YOUR_NEWSAPI_KEY"
-URL = f"https://newsapi.org/v2/top-headlines?country=us&pageSize=10&apiKey={API_KEY}"
-
-# إعداد مجلد الإخراج
-os.makedirs("output", exist_ok=True)
-
-# موسيقى الخلفية
+# ===============================
+# SETTINGS
+# ===============================
+output_folder = "output"
 music_folder = "music"
-music_files = [os.path.join(music_folder, f) for f in os.listdir(music_folder) if f.endswith(".mp3")]
-music_path = random.choice(music_files) if music_files else None
+today = datetime.now().strftime("%Y-%m-%d")
+short_max_duration = 60
 
-# شعار القناة
-logo_path = "logo.png"
+os.makedirs(output_folder, exist_ok=True)
 
-# ألوان النصوص
-colors = ["white", "yellow", "cyan", "lime", "magenta"]
+# ===============================
+# LOAD VIDEO FILES
+# ===============================
+video_files = [
+    os.path.join(output_folder, f)
+    for f in os.listdir(output_folder)
+    if f.endswith(".mp4") and "final" not in f
+]
 
-# جلب الأخبار
-response = requests.get(URL)
-articles = response.json().get("articles", [])
-print(f"📰 Total articles fetched: {len(articles)}")
-print(f"🎵 Using music: {music_path}")
-print(f"📷 Logo exists: {os.path.exists(logo_path)}")
+if not video_files:
+    print("❌ No input video files found in output folder.")
+    exit(1)
 
-short_clips = []
-long_clips = []
+clips = []
+for file in video_files:
+    try:
+        clip = VideoFileClip(file)
+        clip = clip.resize(width=720)
+        clips.append(clip)
+        print(f"Loaded: {file}")
+    except Exception as e:
+        print(f"⚠️ Error loading {file}: {e}")
 
-for idx, article in enumerate(articles, start=1):
-    title = article.get("title", "No Title")
-    image_url = article.get("urlToImage")
+final_long = concatenate_videoclips(clips, method="compose")
 
-    image_path = f"temp_{idx}.jpg"
-    if image_url:
-        try:
-            img_data = requests.get(image_url, timeout=10).content
-            with open(image_path, 'wb') as handler:
-                handler.write(img_data)
-        except:
-            image_path = None
+# ===============================
+# BACKGROUND MUSIC
+# ===============================
+music_files = []
+if os.path.exists(music_folder):
+    music_files = [os.path.join(music_folder, f) for f in os.listdir(music_folder) if f.endswith(".mp3")]
 
-    color = random.choice(colors)
-    txt_clip = TextClip(title, fontsize=40, color=color, size=(720,1280), method="caption").set_duration(5)
-    txt_clip = txt_clip.crossfadein(0.5).crossfadeout(0.5)
-
-    if image_path and os.path.exists(image_path):
-        img_clip = ImageClip(image_path).set_duration(5).resize((720,1280)).fx(vfx.fadein,0.5).fx(vfx.fadeout,0.5)
+if music_files:
+    selected_music = random.choice(music_files)
+    audio = AudioFileClip(selected_music)
+    if audio.duration < final_long.duration:
+        audio = afx.audio_loop(audio, duration=final_long.duration)
     else:
-        img_clip = TextClip("", fontsize=1, size=(720,1280), color="black").set_duration(5)
+        audio = audio.subclip(0, final_long.duration)
+    final_long = final_long.set_audio(audio)
+    print(f"🎵 Music added: {selected_music}")
 
-    if os.path.exists(logo_path):
-        logo_clip = ImageClip(logo_path).set_duration(5).resize(width=100).set_position(("right","top"))
-        video_clip = CompositeVideoClip([img_clip, txt_clip.set_position(("center","bottom")), logo_clip])
-    else:
-        video_clip = CompositeVideoClip([img_clip, txt_clip.set_position(("center","bottom"))])
+# ===============================
+# EXPORT LONG VIDEO
+# ===============================
+long_output_path = os.path.join(output_folder, f"usa_trends_long_{today}.mp4")
+final_long.write_videofile(long_output_path, codec="libx264", audio_codec="aac", fps=24)
 
-    long_clips.append(video_clip)
-    if idx <= 6:
-        short_clips.append(video_clip)
+# ===============================
+# EXPORT SHORT VIDEO
+# ===============================
+short_duration = min(short_max_duration, final_long.duration)
+final_short = final_long.subclip(0, short_duration)
+short_output_path = os.path.join(output_folder, f"usa_trends_shorts_{today}.mp4")
+final_short.write_videofile(short_output_path, codec="libx264", audio_codec="aac", fps=24)
 
-audio_clip = AudioFileClip(music_path) if music_path else None
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+# ===============================
+# CLEANUP
+# ===============================
+for clip in clips:
+    clip.close()
+final_long.close()
+final_short.close()
+if music_files:
+    audio.close()
 
-# Shorts
-if short_clips:
-    short_video = concatenate_videoclips(short_clips, method="compose")
-    if audio_clip:
-        short_video = short_video.set_audio(audio_clip.subclip(0, short_video.duration))
-    short_output = f"output/usa_trends_shorts_{timestamp}.mp4"
-    short_video.write_videofile(short_output, fps=24, codec="libx264")
-    print(f"✅ Shorts video created: {short_output}")
-    print(f"   - Duration: {short_video.duration:.2f} s")
-    print(f"   - Articles: {len(short_clips)}")
-    print(f"   - File size: {os.path.getsize(short_output)/1024/1024:.2f} MB")
-
-# Long Video
-if long_clips:
-    long_video = concatenate_videoclips(long_clips, method="compose")
-    if audio_clip:
-        long_video = long_video.set_audio(audio_clip.subclip(0,long_video.duration))
-    long_output = f"output/usa_trends_long_{timestamp}.mp4"
-    long_video.write_videofile(long_output, fps=24, codec="libx264")
-    print(f"✅ Long video created: {long_output}")
-    print(f"   - Duration: {long_video.duration:.2f} s")
-    print(f"   - Articles: {len(long_clips)}")
-    print(f"   - File size: {os.path.getsize(long_output)/1024/1024:.2f} MB")
+print("🎉 Videos generated successfully!")
