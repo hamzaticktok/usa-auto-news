@@ -1,96 +1,89 @@
-name: USA Trends Full Video Generator
+import os
+import random
+from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
 
-on:
-  schedule:
-    - cron: '0 14 * * *'
-    - cron: '0 20 * * *'
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to run workflow on'
-        required: false
-        default: 'main'
+# ===============================
+# SETTINGS
+# ===============================
+video_folder = "output"
+music_folder = "music"
 
-permissions:
-  contents: write
+# ===============================
+# CHECK VIDEO FILES
+# ===============================
+if not os.path.exists(video_folder):
+    print("❌ Output folder not found.")
+    exit(1)
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+video_files = [
+    os.path.join(video_folder, f)
+    for f in os.listdir(video_folder)
+    if f.endswith(".mp4")
+]
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch || github.ref_name }}
+if not video_files:
+    print("❌ No video files found in output folder.")
+    exit(1)
 
-      # -------------------------
-      # INSTALL SYSTEM DEPENDENCIES
-      # -------------------------
-      - name: Install FFmpeg and system packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libsm6 libxext6
+print(f"✅ Found {len(video_files)} video files.")
 
-      # -------------------------
-      # SETUP PYTHON
-      # -------------------------
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+# ===============================
+# LOAD VIDEOS
+# ===============================
+clips = []
+for file in video_files:
+    try:
+        clip = VideoFileClip(file)
+        clips.append(clip)
+    except Exception as e:
+        print(f"⚠️ Error loading video {file}: {e}")
 
-      # -------------------------
-      # INSTALL PYTHON DEPENDENCIES
-      # -------------------------
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install wheel
-          python -m pip install moviepy==1.0.3
-          python -m pip install imageio
-          python -m pip install imageio-ffmpeg
-          python -m pip install numpy
-          python -m pip install requests
+if not clips:
+    print("❌ No valid video clips could be loaded.")
+    exit(1)
 
-      # -------------------------
-      # RUN SCRIPT
-      # -------------------------
-      - name: Create Output Folder
-        run: mkdir -p output
+final_video = concatenate_videoclips(clips, method="compose")
 
-      - name: Run main.py
-        run: python main.py
+# ===============================
+# OPTIONAL MUSIC
+# ===============================
+music_files = []
 
-      - name: List Output Files
-        run: ls -la output/ || echo "No files generated"
+if os.path.exists(music_folder):
+    music_files = [
+        os.path.join(music_folder, f)
+        for f in os.listdir(music_folder)
+        if f.endswith(".mp3")
+    ]
 
-      # -------------------------
-      # SHORTS ARTIFACT
-      # -------------------------
-      - name: Prepare Shorts Artifact
-        run: |
-          mkdir -p artifact_shorts
-          find output -type f -iname "usa_trends_shorts_*.mp4" -exec cp {} artifact_shorts/ \; || true
+if music_files:
+    print(f"🎵 Found {len(music_files)} music files.")
+    selected_music = random.choice(music_files)
 
-      - name: Upload Shorts Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: usa-trends-shorts
-          path: artifact_shorts
-          if-no-files-found: ignore
+    try:
+        audio = AudioFileClip(selected_music)
+        audio = audio.subclip(0, final_video.duration)
+        final_video = final_video.set_audio(audio)
+        print("✅ Background music added.")
+    except Exception as e:
+        print(f"⚠️ Could not add music: {e}")
+else:
+    print("ℹ️ No music found. Video will be generated without background music.")
 
-      # -------------------------
-      # LONG VIDEO ARTIFACT
-      # -------------------------
-      - name: Prepare Long Video Artifact
-        run: |
-          mkdir -p artifact_long
-          find output -type f -iname "usa_trends_long_*.mp4" -exec cp {} artifact_long/ \; || true
+# ===============================
+# EXPORT FINAL VIDEO
+# ===============================
+output_path = os.path.join(video_folder, "final_video.mp4")
 
-      - name: Upload Long Video Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: usa-trends-long
-          path: artifact_long
-          if-no-files-found: ignore
+try:
+    final_video.write_videofile(
+        output_path,
+        codec="libx264",
+        audio_codec="aac"
+    )
+    print(f"✅ Final video saved to {output_path}")
+except Exception as e:
+    print(f"❌ Error exporting video: {e}")
+    exit(1)
+
+print("🎉 Script completed successfully.")
