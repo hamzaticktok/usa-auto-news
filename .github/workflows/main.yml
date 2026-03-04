@@ -1,12 +1,7 @@
 import os
 import random
 from datetime import datetime
-from moviepy.editor import (
-    VideoFileClip,
-    AudioFileClip,
-    concatenate_videoclips,
-    afx
-)
+from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips, afx
 
 # ===============================
 # SETTINGS
@@ -14,6 +9,7 @@ from moviepy.editor import (
 output_folder = "output"
 music_folder = "music"
 today = datetime.now().strftime("%Y-%m-%d")
+short_max_duration = 60  # مدة الفيديو القصير بحد أقصى
 
 # ===============================
 # ENSURE OUTPUT FOLDER
@@ -39,6 +35,8 @@ clips = []
 for file in video_files:
     try:
         clip = VideoFileClip(file)
+        # Resize all clips to the same width (optional, avoids crashes)
+        clip = clip.resize(width=720)
         clips.append(clip)
         print(f"Loaded: {file}")
     except Exception as e:
@@ -56,14 +54,13 @@ final_long = concatenate_videoclips(clips, method="compose")
 # ===============================
 # OPTIONAL BACKGROUND MUSIC
 # ===============================
+music_files = []
 if os.path.exists(music_folder):
     music_files = [
         os.path.join(music_folder, f)
         for f in os.listdir(music_folder)
         if f.endswith(".mp3")
     ]
-else:
-    music_files = []
 
 if music_files:
     selected_music = random.choice(music_files)
@@ -88,11 +85,7 @@ else:
 # ===============================
 # EXPORT LONG VIDEO
 # ===============================
-long_output_path = os.path.join(
-    output_folder,
-    f"usa_trends_long_{today}.mp4"
-)
-
+long_output_path = os.path.join(output_folder, f"usa_trends_long_{today}.mp4")
 print("🎬 Rendering LONG video...")
 final_long.write_videofile(
     long_output_path,
@@ -104,14 +97,10 @@ final_long.write_videofile(
 # ===============================
 # CREATE SHORTS VERSION (<= 60s)
 # ===============================
-short_duration = min(60, final_long.duration)
+short_duration = min(short_max_duration, final_long.duration)
 final_short = final_long.subclip(0, short_duration)
 
-short_output_path = os.path.join(
-    output_folder,
-    f"usa_trends_shorts_{today}.mp4"
-)
-
+short_output_path = os.path.join(output_folder, f"usa_trends_shorts_{today}.mp4")
 print("📱 Rendering SHORTS video...")
 final_short.write_videofile(
     short_output_path,
@@ -119,5 +108,16 @@ final_short.write_videofile(
     audio_codec="aac",
     fps=24
 )
+
+# ===============================
+# CLEANUP (Prevent memory leaks)
+# ===============================
+print("🧹 Cleaning up...")
+for clip in clips:
+    clip.close()
+final_long.close()
+final_short.close()
+if music_files:
+    audio.close()
 
 print("🎉 All videos generated successfully!")
