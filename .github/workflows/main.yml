@@ -1,89 +1,123 @@
 import os
 import random
-from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
+from datetime import datetime
+from moviepy.editor import (
+    VideoFileClip,
+    AudioFileClip,
+    concatenate_videoclips,
+    afx
+)
 
 # ===============================
 # SETTINGS
 # ===============================
-video_folder = "output"
+output_folder = "output"
 music_folder = "music"
+today = datetime.now().strftime("%Y-%m-%d")
 
 # ===============================
-# CHECK VIDEO FILES
+# ENSURE OUTPUT FOLDER
 # ===============================
-if not os.path.exists(video_folder):
-    print("❌ Output folder not found.")
-    exit(1)
+os.makedirs(output_folder, exist_ok=True)
 
+# ===============================
+# LOAD VIDEO FILES
+# ===============================
 video_files = [
-    os.path.join(video_folder, f)
-    for f in os.listdir(video_folder)
-    if f.endswith(".mp4")
+    os.path.join(output_folder, f)
+    for f in os.listdir(output_folder)
+    if f.endswith(".mp4") and "final" not in f
 ]
 
 if not video_files:
-    print("❌ No video files found in output folder.")
+    print("❌ No input video files found in output folder.")
     exit(1)
 
-print(f"✅ Found {len(video_files)} video files.")
+print(f"✅ Found {len(video_files)} input videos.")
 
-# ===============================
-# LOAD VIDEOS
-# ===============================
 clips = []
 for file in video_files:
     try:
         clip = VideoFileClip(file)
         clips.append(clip)
+        print(f"Loaded: {file}")
     except Exception as e:
-        print(f"⚠️ Error loading video {file}: {e}")
+        print(f"⚠️ Error loading {file}: {e}")
 
 if not clips:
-    print("❌ No valid video clips could be loaded.")
+    print("❌ No valid clips loaded.")
     exit(1)
 
-final_video = concatenate_videoclips(clips, method="compose")
+# ===============================
+# CREATE LONG VIDEO
+# ===============================
+final_long = concatenate_videoclips(clips, method="compose")
 
 # ===============================
-# OPTIONAL MUSIC
+# OPTIONAL BACKGROUND MUSIC
 # ===============================
-music_files = []
-
 if os.path.exists(music_folder):
     music_files = [
         os.path.join(music_folder, f)
         for f in os.listdir(music_folder)
         if f.endswith(".mp3")
     ]
+else:
+    music_files = []
 
 if music_files:
-    print(f"🎵 Found {len(music_files)} music files.")
     selected_music = random.choice(music_files)
+    print(f"🎵 Selected music: {selected_music}")
 
     try:
         audio = AudioFileClip(selected_music)
-        audio = audio.subclip(0, final_video.duration)
-        final_video = final_video.set_audio(audio)
-        print("✅ Background music added.")
+
+        # Loop music if shorter than video
+        if audio.duration < final_long.duration:
+            audio = afx.audio_loop(audio, duration=final_long.duration)
+        else:
+            audio = audio.subclip(0, final_long.duration)
+
+        final_long = final_long.set_audio(audio)
+        print("✅ Music added successfully.")
     except Exception as e:
-        print(f"⚠️ Could not add music: {e}")
+        print(f"⚠️ Failed to add music: {e}")
 else:
-    print("ℹ️ No music found. Video will be generated without background music.")
+    print("ℹ️ No music found. Continuing without background music.")
 
 # ===============================
-# EXPORT FINAL VIDEO
+# EXPORT LONG VIDEO
 # ===============================
-output_path = os.path.join(video_folder, "final_video.mp4")
+long_output_path = os.path.join(
+    output_folder,
+    f"usa_trends_long_{today}.mp4"
+)
 
-try:
-    final_video.write_videofile(
-        output_path,
-        codec="libx264",
-        audio_codec="aac"
-    )
-    print(f"✅ Final video saved to {output_path}")
-except Exception as e:
-    print(f"❌ Error exporting video: {e}")
-    exit(1)
+print("🎬 Rendering LONG video...")
+final_long.write_videofile(
+    long_output_path,
+    codec="libx264",
+    audio_codec="aac",
+    fps=24
+)
 
-print("🎉 Script completed successfully.")
+# ===============================
+# CREATE SHORTS VERSION (<= 60s)
+# ===============================
+short_duration = min(60, final_long.duration)
+final_short = final_long.subclip(0, short_duration)
+
+short_output_path = os.path.join(
+    output_folder,
+    f"usa_trends_shorts_{today}.mp4"
+)
+
+print("📱 Rendering SHORTS video...")
+final_short.write_videofile(
+    short_output_path,
+    codec="libx264",
+    audio_codec="aac",
+    fps=24
+)
+
+print("🎉 All videos generated successfully!")
