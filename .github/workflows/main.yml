@@ -17,7 +17,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/${{ github.event.inputs.branch || github.ref_name }}' || github.event_name != 'workflow_dispatch'
 
     steps:
       - name: Checkout Repository
@@ -49,21 +48,29 @@ jobs:
       - name: List Output Files
         run: ls -la output/
 
-      - name: Upload Shorts Artifact
+      # -------------------------
+      # SHORTS ARTIFACT
+      # -------------------------
+      - name: Prepare Shorts Artifact
         run: |
-          find output -type f -iname "usa_trends_shorts_*.mp4" > shorts_list.txt
           mkdir -p artifact_shorts
-          while read file; do cp "$file" artifact_shorts/; done < shorts_list.txt
+          find output -type f -iname "usa_trends_shorts_*.mp4" -exec cp {} artifact_shorts/ \;
+
+      - name: Upload Shorts Artifact
         uses: actions/upload-artifact@v4
         with:
           name: usa-trends-shorts
           path: artifact_shorts
 
-      - name: Upload Long Video Artifact
+      # -------------------------
+      # LONG VIDEO ARTIFACT
+      # -------------------------
+      - name: Prepare Long Video Artifact
         run: |
-          find output -type f -iname "usa_trends_long_*.mp4" > long_list.txt
           mkdir -p artifact_long
-          while read file; do cp "$file" artifact_long/; done < long_list.txt
+          find output -type f -iname "usa_trends_long_*.mp4" -exec cp {} artifact_long/ \;
+
+      - name: Upload Long Video Artifact
         uses: actions/upload-artifact@v4
         with:
           name: usa-trends-long
