@@ -1,123 +1,61 @@
-import os
-import random
-from datetime import datetime
-from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips, afx
+name: Build Videos
 
-# ===============================
-# SETTINGS
-# ===============================
-output_folder = "output"
-music_folder = "music"
-today = datetime.now().strftime("%Y-%m-%d")
-short_max_duration = 60  # مدة الفيديو القصير بحد أقصى
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # لتشغيله يدويًا من GitHub
 
-# ===============================
-# ENSURE OUTPUT FOLDER
-# ===============================
-os.makedirs(output_folder, exist_ok=True)
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-# ===============================
-# LOAD VIDEO FILES
-# ===============================
-video_files = [
-    os.path.join(output_folder, f)
-    for f in os.listdir(output_folder)
-    if f.endswith(".mp4") and "final" not in f
-]
+    steps:
+    # 1️⃣ سحب المستودع
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-if not video_files:
-    print("❌ No input video files found in output folder.")
-    exit(1)
+    # 2️⃣ إعداد Python
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
 
-print(f"✅ Found {len(video_files)} input videos.")
+    # 3️⃣ تثبيت مكتبات Python
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip
+        pip install moviepy imageio[ffmpeg]
 
-clips = []
-for file in video_files:
-    try:
-        clip = VideoFileClip(file)
-        # Resize all clips to the same width (optional, avoids crashes)
-        clip = clip.resize(width=720)
-        clips.append(clip)
-        print(f"Loaded: {file}")
-    except Exception as e:
-        print(f"⚠️ Error loading {file}: {e}")
+    # 4️⃣ تثبيت FFmpeg
+    - name: Install FFmpeg
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-if not clips:
-    print("❌ No valid clips loaded.")
-    exit(1)
+    # 5️⃣ تحضير المجلدات
+    - name: Prepare folders
+      run: |
+        mkdir -p output
+        mkdir -p music
 
-# ===============================
-# CREATE LONG VIDEO
-# ===============================
-final_long = concatenate_videoclips(clips, method="compose")
+    # 6️⃣ تنزيل ملفات الفيديو (ضع روابطك هنا)
+    - name: Download sample videos
+      run: |
+        wget -O output/video1.mp4 "https://example.com/video1.mp4"
+        wget -O output/video2.mp4 "https://example.com/video2.mp4"
 
-# ===============================
-# OPTIONAL BACKGROUND MUSIC
-# ===============================
-music_files = []
-if os.path.exists(music_folder):
-    music_files = [
-        os.path.join(music_folder, f)
-        for f in os.listdir(music_folder)
-        if f.endswith(".mp3")
-    ]
+    # 7️⃣ تنزيل الموسيقى الخلفية (ضع رابطك هنا)
+    - name: Download background music
+      run: |
+        wget -O music/music.mp3 "https://example.com/music.mp3"
 
-if music_files:
-    selected_music = random.choice(music_files)
-    print(f"🎵 Selected music: {selected_music}")
+    # 8️⃣ تشغيل السكربت المحسّن
+    - name: Run video script
+      run: |
+        python3 your_script.py  # استبدل باسم سكربتك
 
-    try:
-        audio = AudioFileClip(selected_music)
-
-        # Loop music if shorter than video
-        if audio.duration < final_long.duration:
-            audio = afx.audio_loop(audio, duration=final_long.duration)
-        else:
-            audio = audio.subclip(0, final_long.duration)
-
-        final_long = final_long.set_audio(audio)
-        print("✅ Music added successfully.")
-    except Exception as e:
-        print(f"⚠️ Failed to add music: {e}")
-else:
-    print("ℹ️ No music found. Continuing without background music.")
-
-# ===============================
-# EXPORT LONG VIDEO
-# ===============================
-long_output_path = os.path.join(output_folder, f"usa_trends_long_{today}.mp4")
-print("🎬 Rendering LONG video...")
-final_long.write_videofile(
-    long_output_path,
-    codec="libx264",
-    audio_codec="aac",
-    fps=24
-)
-
-# ===============================
-# CREATE SHORTS VERSION (<= 60s)
-# ===============================
-short_duration = min(short_max_duration, final_long.duration)
-final_short = final_long.subclip(0, short_duration)
-
-short_output_path = os.path.join(output_folder, f"usa_trends_shorts_{today}.mp4")
-print("📱 Rendering SHORTS video...")
-final_short.write_videofile(
-    short_output_path,
-    codec="libx264",
-    audio_codec="aac",
-    fps=24
-)
-
-# ===============================
-# CLEANUP (Prevent memory leaks)
-# ===============================
-print("🧹 Cleaning up...")
-for clip in clips:
-    clip.close()
-final_long.close()
-final_short.close()
-if music_files:
-    audio.close()
-
-print("🎉 All videos generated successfully!")
+    # 9️⃣ رفع النتائج كـ Artifacts
+    - name: Upload output videos as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: videos
+        path: output/
