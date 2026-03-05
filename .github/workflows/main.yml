@@ -1,4 +1,4 @@
-name: TrendsUSA Auto Bot
+name: TrendsUSA Final Fix
 
 on:
   workflow_dispatch:
@@ -22,21 +22,27 @@ jobs:
           pip install moviepy imageio[ffmpeg]
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Run Engine
+      - name: Debug - Show me the files
         run: |
-          # الانتقال للمجلد الذي يحتوي على السكربت وتشغيله
-          cd usa-auto-news
-          python3 your_script.py
-        # هذا السطر يخبر GitHub أنه إذا فشل المجلد الأول جرب المسار البديل
-        continue-on-error: true 
-
-      - name: Run Engine (Fallback)
+          echo "Listing all files in the repository:"
+          find . -maxdepth 3 -not -path '*/.*'
+          
+      - name: Find and Run Script
         run: |
-          # محاولة تشغيل السكربت في حال كان في المجلد الرئيسي
-          python3 your_script.py
-        if: success() == false
+          # هذا الأمر سيبحث عن ملف your_script.py في أي مكان ويشغله
+          SCRIPT_PATH=$(find . -name "your_script.py" | head -n 1)
+          if [ -z "$SCRIPT_PATH" ]; then
+            echo "❌ Error: your_script.py not found anywhere in the repo!"
+            exit 1
+          fi
+          echo "✅ Found script at: $SCRIPT_PATH"
+          # الحصول على مسار المجلد الذي يحتوي على السكربت لتجنب أخطاء المسارات الداخلية
+          SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+          cd "$SCRIPT_DIR"
+          python3 $(basename "$SCRIPT_PATH")
 
       - name: Upload Result
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: usa-trends-video
