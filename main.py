@@ -50,6 +50,17 @@ jobs:
         name: videos
         path: output/
 """
+steps:
+  - name: Checkout code
+    uses: actions/checkout@v4  # هذه الخطوة هي التي تجلب ملفاتك للـ Runner
+
+  - name: Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.9'
+
+  - name: Run script
+    run: python your_script.py  # تأكد أن الاسم يطابق اسم ملفك الحقيقي
 
 script_content = """import os
 import random
