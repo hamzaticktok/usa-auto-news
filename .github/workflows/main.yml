@@ -1,49 +1,17 @@
-name: TrendsUSA Final Fix
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+name: TrendsUSA Bot
+on: [workflow_dispatch, push]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Dependencies
-        run: |
-          pip install moviepy imageio[ffmpeg]
-          sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      - name: Debug - Show me the files
-        run: |
-          echo "Listing all files in the repository:"
-          find . -maxdepth 3 -not -path '*/.*'
-          
-      - name: Find and Run Script
-        run: |
-          # هذا الأمر سيبحث عن ملف your_script.py في أي مكان ويشغله
-          SCRIPT_PATH=$(find . -name "your_script.py" | head -n 1)
-          if [ -z "$SCRIPT_PATH" ]; then
-            echo "❌ Error: your_script.py not found anywhere in the repo!"
-            exit 1
-          fi
-          echo "✅ Found script at: $SCRIPT_PATH"
-          # الحصول على مسار المجلد الذي يحتوي على السكربت لتجنب أخطاء المسارات الداخلية
-          SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
-          cd "$SCRIPT_DIR"
-          python3 $(basename "$SCRIPT_PATH")
-
-      - name: Upload Result
-        if: always()
+      - uses: actions/checkout@v4
+      - sudo apt-get update && sudo apt-get install -y ffmpeg
+      - pip install moviepy
+      - name: Execute
+        run: python3 your_script.py
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: usa-trends-video
-          path: "**/output/*.mp4"
+          name: video-result
+          path: output/
