@@ -1,38 +1,42 @@
-name: Build Videos
+name: TrendsUSA Video Bot
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch: # تشغيل يدوياً للتجربة
+  schedule:
+    - cron: '0 15 * * *' # تشغيل تلقائي يومياً
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        pip install moviepy imageio[ffmpeg]
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install moviepy imageio[ffmpeg]
 
-    - name: Download Assets
-      run: |
-        mkdir -p videos music output
-        curl -L https://github.com/selimb/mini-video/raw/main/video1.mp4 -o videos/video1.mp4
-        curl -L https://github.com/selimb/mini-video/raw/main/video2.mp4 -o videos/video2.mp4
-        curl -L https://github.com/selimb/mini-video/raw/main/music.mp3 -o music/sample.mp3
+      - name: Create Folders
+        run: mkdir -p videos music output
 
-    - name: Run Script
-      run: python3 your_script.py
+      - name: Download Resources
+        run: |
+          # تحميل الملفات مباشرة إلى المجلدات الصحيحة
+          curl -L https://github.com/selimb/mini-video/raw/main/video1.mp4 -o videos/video1.mp4
+          curl -L https://github.com/selimb/mini-video/raw/main/video2.mp4 -o videos/video2.mp4
+          curl -L https://github.com/selimb/mini-video/raw/main/music.mp3 -o music/sample.mp3
 
-    - name: Upload Results
-      uses: actions/upload-artifact@v4
-      with:
-        name: final-videos
-        path: output/
+      - name: Run Engine
+        run: python your_script.py
+
+      - name: Save Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-videos
+          path: output/
