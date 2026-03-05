@@ -2,43 +2,37 @@ name: Build Videos
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+    - name: Checkout
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: "3.11"
 
     - name: Install dependencies
       run: |
-        pip install --upgrade pip
         pip install moviepy imageio[ffmpeg]
 
-    - name: Install FFmpeg
-      run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-    # مجلدات الفيديو والموسيقى موجودة مسبقًا
-    - name: Ensure folders
+    - name: Download Assets
       run: |
-        mkdir -p output
-        mkdir -p videos
-        mkdir -p music
+        mkdir -p videos music output
+        curl -L https://github.com/selimb/mini-video/raw/main/video1.mp4 -o videos/video1.mp4
+        curl -L https://github.com/selimb/mini-video/raw/main/video2.mp4 -o videos/video2.mp4
+        curl -L https://github.com/selimb/mini-video/raw/main/music.mp3 -o music/sample.mp3
 
-    - name: Run video script
+    - name: Run Script
       run: python3 your_script.py
 
-    - name: Upload output videos
+    - name: Upload Results
       uses: actions/upload-artifact@v4
       with:
-        name: videos
+        name: final-videos
         path: output/
