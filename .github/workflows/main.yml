@@ -1,9 +1,9 @@
-name: TrendsUSA Video Bot
+name: TrendsUSA Auto Bot
 
 on:
-  workflow_dispatch: # تشغيل يدوياً للتجربة
-  schedule:
-    - cron: '0 15 * * *' # تشغيل تلقائي يومياً
+  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
@@ -19,24 +19,25 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y ffmpeg
           pip install moviepy imageio[ffmpeg]
-
-      - name: Create Folders
-        run: mkdir -p videos music output
-
-      - name: Download Resources
-        run: |
-          # تحميل الملفات مباشرة إلى المجلدات الصحيحة
-          curl -L https://github.com/selimb/mini-video/raw/main/video1.mp4 -o videos/video1.mp4
-          curl -L https://github.com/selimb/mini-video/raw/main/video2.mp4 -o videos/video2.mp4
-          curl -L https://github.com/selimb/mini-video/raw/main/music.mp3 -o music/sample.mp3
+          sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Run Engine
-        run: python your_script.py
+        run: |
+          # الانتقال للمجلد الذي يحتوي على السكربت وتشغيله
+          cd usa-auto-news
+          python3 your_script.py
+        # هذا السطر يخبر GitHub أنه إذا فشل المجلد الأول جرب المسار البديل
+        continue-on-error: true 
 
-      - name: Save Result
+      - name: Run Engine (Fallback)
+        run: |
+          # محاولة تشغيل السكربت في حال كان في المجلد الرئيسي
+          python3 your_script.py
+        if: success() == false
+
+      - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
-          name: youtube-videos
-          path: output/
+          name: usa-trends-video
+          path: "**/output/*.mp4"
