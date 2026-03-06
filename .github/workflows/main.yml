@@ -1,105 +1,67 @@
-name: Ultimate News Video Generator
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y imagemagick ffmpeg
-          sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
-
-      - name: Install Python Libraries
-        run: |
-          pip install requests beautifulsoup4 lxml gtts moviepy==1.0.3 pillow
-
-      - name: Generate All Videos
-        env:
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-        run: |
-          cat <<EOT > your_script.py
-          import os, requests
+import os, requests
           from bs4 import BeautifulSoup
           from gtts import gTTS
           from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips
+          import moviepy.video.fx.all as vfx
           import PIL.Image
 
           if not hasattr(PIL.Image, 'ANTIALIAS'):
               PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
           def get_all_trends(limit=3):
-              try:
-                  url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-                  r = requests.get(url, timeout=10)
-                  soup = BeautifulSoup(r.content, 'xml')
-                  items = soup.find_all('item')[:limit]
-                  return [item.title.text.split("-")[0].strip() for item in items]
-              except:
-                  return ["Breaking USA News Update"] * limit
+              url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+              r = requests.get(url, timeout=10)
+              soup = BeautifulSoup(r.content, 'xml')
+              return [item.title.text.split("-")[0].strip() for item in soup.find_all('item')[:limit]]
 
-          def get_video_from_pexels(query):
+          def get_video(query):
               api_key = os.getenv('PEXELS_API_KEY')
-              headers = {'Authorization': api_key}
-              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
-              try:
-                  r = requests.get(url, headers=headers, timeout=15)
-                  data = r.json()
-                  if data['videos']:
-                      # اختيار أعلى جودة
-                      video_files = data['videos'][0]['video_files']
-                      return max(video_files, key=lambda x: x['width'])['link']
-              except:
-                  pass
-              return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait&size=large"
+              r = requests.get(url, headers={'Authorization': api_key})
+              data = r.json()
+              if data.get('videos'):
+                  return max(data['videos'][0]['video_files'], key=lambda x: x['width'])['link']
+              return "https://assets.mixkit.co/videos/preview/mixkit-breaking-news-digital-animation-with-hud-elements-33303-large.mp4"
 
-          def create_clip(title, filename):
+          def create_pro_clip(title, filename):
               os.makedirs("temp", exist_ok=True)
+              # 1. الصوت
               tts = gTTS(text=f"Breaking news. {title}", lang='en')
               audio_path = f"temp/a_{filename}.mp3"
               tts.save(audio_path)
               audio = AudioFileClip(audio_path)
 
-              v_url = get_video_from_pexels(" ".join(title.split()[:2]))
+              # 2. فيديو مع تأثير الزوم (Zoom In)
+              v_url = get_video(" ".join(title.split()[:2]))
               v_path = f"temp/v_{filename}.mp4"
               with open(v_path, "wb") as f: f.write(requests.get(v_url).content)
-
-              clip = VideoFileClip(v_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(audio.duration + 1)
-              bar = ColorClip(size=(1080, 450), color=(200, 0, 0)).set_opacity(0.85).set_position(('center', 1250)).set_duration(clip.duration)
-              txt = TextClip(title.upper(), fontsize=70, color='white', font='DejaVu-Sans-Bold', method='caption', size=(950, None)).set_position(('center', 1300)).set_duration(clip.duration)
-              header = TextClip("LIVE NEWS", fontsize=100, color='yellow', font='DejaVu-Sans-Bold').set_position(('center', 200)).set_duration(clip.duration)
               
-              return CompositeVideoClip([clip, bar, txt, header]).set_audio(audio)
+              clip = VideoFileClip(v_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(audio.duration + 1)
+              # إضافة تأثير تقريب بسيط
+              clip = clip.fx(vfx.resize, lambda t: 1 + 0.04 * t) 
+
+              # 3. الهوية البصرية (نص الخبر الاحترافي)
+              # شريط العنوان الأحمر
+              bar = ColorClip(size=(1080, 450), color=(200, 0, 0)).set_opacity(0.9).set_position(('center', 1300)).set_duration(clip.duration)
+              
+              # النص الرئيسي مع ظل (Shadow)
+              txt = TextClip(title.upper(), fontsize=75, color='white', font='DejaVu-Sans-Bold', method='caption', size=(900, None)).set_position(('center', 1330)).set_duration(clip.duration)
+              
+              # شعار "BREAKING NEWS" في الأعلى بتصميم عصري
+              header_bg = ColorClip(size=(600, 120), color=(255, 255, 0)).set_position(('center', 150)).set_duration(clip.duration)
+              header_txt = TextClip("BREAKING", fontsize=80, color='black', font='DejaVu-Sans-Bold').set_position(('center', 160)).set_duration(clip.duration)
+
+              # 4. شريط الأخبار المتحرك في الأسفل (Ticker)
+              ticker_text = f" • {title.upper()} " * 3
+              ticker = TextClip(ticker_text, fontsize=40, color='white', font='DejaVu-Sans').set_position(lambda t: (1080 - (200*t), 1760)).set_duration(clip.duration)
+              ticker_bg = ColorClip(size=(1080, 60), color=(0, 0, 0)).set_position((0, 1750)).set_duration(clip.duration)
+
+              return CompositeVideoClip([clip, bar, txt, header_bg, header_txt, ticker_bg, ticker]).set_audio(audio)
 
           os.makedirs("output", exist_ok=True)
-          all_news = get_all_trends(3) # قللنا العدد لـ 3 لسرعة الإنتاج
+          news_list = get_all_trends(3)
 
-          print("Creating Shorts...")
-          for i in range(2):
-              short = create_clip(all_news[i], f"short_{i}")
-              short.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
-
-          print("Creating Long Video...")
-          long_clips = [create_clip(news, f"long_{i}") for i, news in enumerate(all_news)]
-          final_long = concatenate_videoclips(long_clips, method="compose")
-          final_long.write_videofile("output/long_video.mp4", fps=24, codec="libx264")
-          EOT
-          python3 your_script.py
-
-      - name: Save Videos as Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: my-final-videos
-          path: output/*.mp4
+          # إنتاج الفيديوهات
+          for i, news in enumerate(news_list):
+              final = create_pro_clip(news, f"n_{i}")
+              final.write_videofile(f"output/pro_short_{i+1}.mp4", fps=24, codec="libx264", audio_codec="aac")
