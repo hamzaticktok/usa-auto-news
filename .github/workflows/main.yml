@@ -1,6 +1,6 @@
-name: TrendsUSA Bot
+name: TrendsUSA Final Fix
 
-on: 
+on:
   workflow_dispatch:
   push:
     branches: [ main ]
@@ -17,20 +17,27 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install System Dependencies
+      - name: Install Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
-      - name: Install Python Packages
-        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
           pip install moviepy imageio[ffmpeg]
 
-      - name: Execute Video Script
-        run: python3 your_script.py
+      - name: Find and Run Script
+        run: |
+          # البحث عن الملف في كل المجلدات وتشغيله من مكانه الحقيقي
+          SCRIPT_PATH=$(find . -name "your_script.py" | head -n 1)
+          if [ -z "$SCRIPT_PATH" ]; then
+            echo "❌ Error: your_script.py not found! Please create it in GitHub interface."
+            exit 1
+          fi
+          echo "✅ Found script at: $SCRIPT_PATH"
+          SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+          cd "$SCRIPT_DIR"
+          python3 your_script.py
 
-      - name: Upload Finished Video
+      - name: Upload Result
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: video-result
-          path: output/
+          name: video-output
+          path: "**/output/*.mp4"
