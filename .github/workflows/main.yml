@@ -1,4 +1,4 @@
-name: TrendsUSA Mega Fix v4
+name: USA Trends Auto-Creator
 
 on:
   workflow_dispatch:
@@ -17,15 +17,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install System Dependencies
+      - name: Install Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg imagemagick
-          # السماح لـ ImageMagick بالكتابة (ضروري للنصوص)
+          # تعديل سياسة ImageMagick للسماح بالكتابة على الفيديو
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
           pip install moviepy==1.0.3 imageio==2.25.1
 
-      - name: Generate and Run Script
+      - name: Create USA Trend Script
         run: |
           cat <<EOT > your_script.py
           import os
@@ -33,24 +33,29 @@ jobs:
 
           os.makedirs("output", exist_ok=True)
 
-          print("🚀 Generating professional video without external links...")
+          print("🎬 Generating USA TRENDS content...")
           
-          # 1. إنشاء خلفية ملونة (تنسيق Shorts 1080x1920)
-          bg = ColorClip(size=(1080, 1920), color=(20, 20, 20), duration=5)
+          # 1. خلفية سوداء فخمة (Shorts Format)
+          bg = ColorClip(size=(1080, 1920), color=(10, 10, 10), duration=10)
           
-          # 2. إضافة نص ترحيبي لقناتك
+          # 2. نص العنوان (USA TRENDS)
           try:
-              txt_clip = TextClip("TRENDS USA 25\nLoading Content...", fontsize=70, color='white', font='Arial', method='caption', size=(900, None))
-              txt_clip = txt_clip.set_position('center').set_duration(5)
-              final = CompositeVideoClip([bg, txt_clip])
-          except:
-              # إذا فشل الخط (ImageMagick)، سنكتفي بالخلفية الملونة لضمان النجاح
-              print("Text generation failed, creating background only.")
+              title = TextClip("USA TRENDS 2026", fontsize=80, color='red', font='Arial-Bold', method='caption', size=(1000, None))
+              title = title.set_position(('center', 400)).set_duration(10)
+              
+              # 3. اسم قناتك
+              channel_name = TextClip("@TRENDSUSA25", fontsize=50, color='white', font='Arial', method='caption', size=(800, None))
+              channel_name = channel_name.set_position(('center', 1500)).set_duration(10)
+              
+              # دمج العناصر
+              final = CompositeVideoClip([bg, title, channel_name])
+          except Exception as e:
+              print(f"Text error: {e}. Falling back to visual only.")
               final = bg
 
-          print("💾 Writing final video...")
-          final.write_videofile("output/final_video.mp4", codec="libx264", fps=24, audio=False)
-          print("✅ DONE! Video is ready in output folder.")
+          print("💾 Exporting Video...")
+          final.write_videofile("output/usa_trend_video.mp4", codec="libx264", fps=24, audio=False)
+          print("✅ Video created: output/usa_trend_video.mp4")
           EOT
           
           python3 your_script.py
@@ -59,5 +64,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trends-usa-stable-video
+          name: USA-Trend-Video
           path: "output/*.mp4"
