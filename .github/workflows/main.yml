@@ -1,4 +1,4 @@
-name: 4-Shorts Pro Factory HD
+name: 4-Shorts Hybrid Pro (Video & Images)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -16,100 +16,87 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install System Tools & Fonts
+      - name: Install Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-dejavu-core
           pip install requests beautifulsoup4 lxml edge-tts
 
-      - name: Generate HD Shorts
+      - name: Generate Hybrid HD Shorts
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
           cat << 'EOF' > news_to_video.py
-          import os, requests, random, asyncio, textwrap
+          import os, requests, random, asyncio, textwrap, re
           from bs4 import BeautifulSoup
           import edge_tts
+
+          def get_smart_keywords(title):
+              stop_words = {'a', 'an', 'the', 'breaking', 'news', 'update', 'says', 'after', 'with', 'for', 'over', 'is', 'at', 'on', 'in'}
+              words = re.findall(r'\w+', title.lower())
+              keywords = [w for w in words if w not in stop_words and len(w) > 2]
+              return " ".join(keywords[:2]) if keywords else "news"
 
           async def main():
               api_key = os.getenv('PEXELS_API_KEY')
               os.makedirs("output", exist_ok=True)
+              headers = {'Authorization': api_key}
               
-              if not api_key:
-                  print("❌ Error: PEXELS_API_KEY is missing in Secrets!")
-                  return
-
-              print("🌐 Fetching Latest News...")
               res = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
-              soup = BeautifulSoup(res.content, 'lxml-xml')
-              items = soup.find_all('item')[:4]
+              items = BeautifulSoup(res.content, 'lxml-xml').find_all('item')[:4]
               
               for i, item in enumerate(items):
                   try:
-                      # تنظيف العنوان وتجهيزه
-                      full_title = item.title.text.split(' - ')[0].replace('"', '').replace("'", "")
-                      display_title = textwrap.fill(full_title.upper(), width=30)
-                      print(f"🎬 Processing Video {i+1}: {full_title[:50]}...")
+                      title = item.title.text.split(' - ')[0].replace('"', '').replace("'", "")
+                      keywords = get_smart_keywords(title)
+                      print(f"🎬 Processing {i+1}: {keywords}")
                       
-                      # 1. توليد صوت احترافي (Neural Voice)
+                      # 1. الصوت
                       audio_path = f"audio_{i}.mp3"
-                      voice_text = f"Breaking news update. {full_title}. Stay tuned for more."
-                      communicate = edge_tts.Communicate(voice_text, "en-US-ChristopherNeural")
-                      await communicate.save(audio_path)
+                      await edge_tts.Communicate(f"Breaking. {title}", "en-US-ChristopherNeural").save(audio_path)
 
-                      # 2. جلب فيديو عالي الجودة من Pexels
-                      headers = {'Authorization': api_key}
-                      search_term = full_title.split()[0]
-                      v_res = requests.get(f"https://api.pexels.com/videos/search?query={search_term}&per_page=10&orientation=portrait", headers=headers)
-                      v_data = v_res.json()
+                      # 2. جلب الوسائط (فيديو أو صورة)
+                      is_image = False
+                      v_res = requests.get(f"https://api.pexels.com/videos/search?query={keywords}&per_page=5&orientation=portrait", headers=headers).json()
                       
-                      if 'videos' in v_data and len(v_data['videos']) > 0:
-                          # اختيار أعلى جودة متاحة للفيديو
-                          video_files = v_data['videos'][0]['video_files']
-                          v_link = max(video_files, key=lambda x: x.get('width', 0))['link']
+                      if v_res.get('videos'):
+                          media_url = random.choice(v_res['videos'])['video_files'][0]['link']
                       else:
-                          v_link = "https://assets.mixkit.co/videos/preview/mixkit-abstract-technology-digital-background-43553-large.mp4"
+                          print("⚠️ No video found, searching for images...")
+                          img_res = requests.get(f"https://api.pexels.com/v1/search?query={keywords}&per_page=5&orientation=portrait", headers=headers).json()
+                          media_url = random.choice(img_res['photos'])['src']['large2x'] if img_res.get('photos') else "https://images.pexels.com/photos/395196/pexels-photo-395196.jpeg"
+                          is_image = True
                       
-                      v_path = f"raw_{i}.mp4"
-                      with open(v_path, "wb") as f: f.write(requests.get(v_link).content)
+                      media_path = f"media_{i}.{'jpg' if is_image else 'mp4'}"
+                      with open(media_path, "wb") as f: f.write(requests.get(media_url).content)
 
-                      # 3. المونتاج باستخدام FFmpeg بإعدادات HD
+                      # 3. المونتاج بفلتر متطور (Zoom Effect للصور)
                       output_file = f"output/short_{i+1}.mp4"
                       
-                      # إعدادات الفلتر: 
-                      # - تكبير الفيديو لملء الشاشة 1080x1920
-                      # - إضافة صندوق أسود شفاف خلف النص
-                      # - إضافة النص بخط عريض وواضح
-                      video_filter = (
-                          f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-                          f"drawbox=y=ih-500:color=black@0.7:width=iw:height=400:t=fill,"
-                          f"drawtext=text='{full_title[:65]}...':fontcolor=white:fontsize=55:"
-                          f"x=(w-text_w)/2:y=h-400:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-                      )
+                      if is_image:
+                          # تأثير الزوم السينمائي للصورة لجعلها نابضة بالحياة
+                          vf = (f"zoompan=z='min(zoom+0.0015,1.5)':d=360:s=1080x1920,scale=1080:1920,"
+                                f"drawbox=y=ih-500:color=black@0.7:width=iw:height=400:t=fill,"
+                                f"drawtext=text='{title[:65]}...':fontcolor=white:fontsize=55:x=(w-text_w)/2:y=h-400:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+                          input_flag = f"-loop 1 -i {media_path}"
+                      else:
+                          # فلتر الفيديو العادي
+                          vf = (f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+                                f"drawbox=y=ih-500:color=black@0.7:width=iw:height=400:t=fill,"
+                                f"drawtext=text='{title[:65]}...':fontcolor=white:fontsize=55:x=(w-text_w)/2:y=h-400:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+                          input_flag = f"-i {media_path}"
 
-                      # -crf 18: تعني جودة سينمائية فائقة
-                      # -preset slow: تعني ضغط أفضل وجودة أعلى
-                      ffmpeg_cmd = (
-                          f'ffmpeg -i {v_path} -i {audio_path} -t 15 '
-                          f'-vf "{video_filter}" '
-                          f'-c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p '
-                          f'-c:a aac -b:a 192k -shortest {output_file} -y'
-                      )
+                      os.system(f'ffmpeg {input_flag} -i {audio_path} -t 15 -vf "{vf}" -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p -c:a aac -b:a 192k -shortest {output_file} -y')
                       
-                      os.system(ffmpeg_cmd)
-                      print(f"✅ Created HD Video: {output_file}")
-                      
-                  except Exception as e:
-                      print(f"❌ Error in Video {i+1}: {e}")
+                  except Exception as e: print(f"❌ Error: {e}")
 
-          if __name__ == "__main__":
-              asyncio.run(main())
+          if __name__ == "__main__": asyncio.run(main())
           EOF
           python3 news_to_video.py
 
-      - name: Upload HD Videos
+      - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Pro-Shorts-HD-Package
+          name: Hybrid-HD-Shorts
           path: output/*.mp4
