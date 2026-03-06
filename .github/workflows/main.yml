@@ -1,11 +1,43 @@
-import os, requests
+name: High Quality News Generator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick ffmpeg
+          # فك قفل الحماية عن ImageMagick للسماح بإنشاء النصوص
+          sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
+
+      - name: Install Python Libraries
+        run: |
+          pip install requests beautifulsoup4 lxml gtts moviepy==1.0.3 pillow
+
+      - name: Generate All High Quality Videos
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: |
+          cat <<EOT > your_script.py
+          import os, requests
           from bs4 import BeautifulSoup
           from gtts import gTTS
-          # إضافة vfx لتسريع عملية تحجيم الفيديو
           from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips
           import PIL.Image
 
-          # إصلاح Pillow
           if not hasattr(PIL.Image, 'ANTIALIAS'):
               PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
@@ -22,89 +54,16 @@ import os, requests
           def get_best_pexels_video(query):
               api_key = os.getenv('PEXELS_API_KEY')
               headers = {'Authorization': api_key}
-              
-              # تحسين البحث: نطلب فيديوهات عمودية حصراً (portrait) وبجودة HD على الأقل
+              # طلب فيديوهات عمودية حصراً وبجودة عالية
               url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait&size=large"
-              
               try:
                   r = requests.get(url, headers=headers, timeout=15)
                   data = r.json()
-                  
                   if data['videos']:
                       video_files = data['videos'][0]['video_files']
-                      
-                      # البحث عن أفضل رابط جودة متوفر (مثلاً 4K أو FullHD)
-                      # نقوم بترتيب الروابط بناءً على العرض والارتفاع ونأخذ أعلاها
+                      # اختيار أعلى دقة متاحة
                       best_video = max(video_files, key=lambda x: x['width'] * x['height'])
-                      
-                      print(f"🎬 Found High Quality Video: {best_video['width']}x{best_video['height']} - {best_video['link']}")
                       return best_video['link']
-                      
-              except Exception as e:
-                  print(f"Pexels API Error or no high quality video found: {e}")
-              
-              # خلفية احتياطية (تم تحديث الرابط لخلفية متحركة عالية الجودة)
-              return "https://assets.mixkit.co/videos/preview/mixkit-breaking-news-digital-animation-with-hud-elements-33303-large.mp4"
-
-          def create_single_high_quality_clip(title, filename, target_size=(1080, 1920)):
-              os.makedirs("temp", exist_ok=True)
-              
-              # 1. الصوت
-              tts = gTTS(text=f"Breaking news. {title}", lang='en')
-              audio_path = f"temp/audio_{filename}.mp3"
-              tts.save(audio_path)
-              audio = AudioFileClip(audio_path)
-
-              # 2. جلب أفضل فيديو متوفر
-              search_q = " ".join(title.split()[:2])
-              print(f"🔍 Searching for HD video for: {search_q}")
-              v_url = get_best_pexels_video(search_q)
-              
-              v_path = f"temp/bg_{filename}.mp4"
-              v_r = requests.get(v_url, stream=True)
-              with open(v_path, "wb") as f:
-                  for chunk in v_r.iter_content(chunk_size=1024):
-                      if chunk:
-                          f.write(chunk)
-
-              # 3. معالجة الفيديو بجودة عالية
-              clip = VideoFileClip(v_path)
-              
-              # استخدام resize الذكي للحفاظ على الأبعاد العمودية 1080x1920
-              # إذا كان الفيديو الأصلي أعرض، سيقوم بقصه من المنتصف تلقائياً
-              if clip.w < target_size[0] or clip.h < target_size[1]:
-                  clip = clip.resize(height=target_size[1]) # تكبير الارتفاع أولاً
-                  if clip.w < target_size[0]: # إذا كان العرض ما زال صغيراً، كبر العرض
-                      clip = clip.resize(width=target_size[0])
-              
-              # قص الفيديو ليناسب الأبعاد النهائية تماماً
-              clip = clip.crop(x_center=clip.w/2, y_center=clip.h/2, width=target_size[0], height=target_size[1])
-              clip = clip.set_duration(audio.duration + 1)
-
-              # 4. النصوص (تم تكبير الخط قليلاً ليتناسب مع دقة HD)
-              bar = ColorClip(size=(target_size[0], 450), color=(200, 0, 0)).set_opacity(0.85).set_position(('center', 1300)).set_duration(clip.duration)
-              txt = TextClip(title.upper(), fontsize=70, color='white', font='DejaVu-Sans-Bold', method='caption', size=(950, None)).set_position(('center', 1350)).set_duration(clip.duration)
-              header = TextClip("LIVE NEWS", fontsize=100, color='yellow', font='DejaVu-Sans-Bold').set_position(('center', 200)).set_duration(clip.duration)
-              
-              return CompositeVideoClip([clip, bar, txt, header]).set_audio(audio)
-
-          os.makedirs("output", exist_ok=True)
-          os.makedirs("temp", exist_ok=True)
-          
-          print("🔄 Fetching Latest Trends...")
-          all_news = get_all_trends(5)
-
-          # إنتاج 2 Shorts بجودة عالية
-          print("🎬 Creating High Quality Shorts...")
-          for i in range(2):
-              short = create_single_high_quality_clip(all_news[i], f"short_{i}")
-              short.write_videofile(f"output/short_{i+1}.mp4", fps=30, codec="libx264", audio_codec="aac", bitrate="5000k")
-
-          # إنتاج الفيديو الطويل بجودة عالية
-          print("🎬 Creating High Quality Long Video...")
-          long_clips = []
-          for i, news in enumerate(all_news):
-              long_clips.append(create_single_high_quality_clip(news, f"long_{i}"))
-          
-          final_long = concatenate_videoclips(long_clips, method="compose")
-          final_long.write_videofile("output/long_video.mp4", fps=30, codec="libx264", audio_codec="aac", bitrate="8000k")
+              except:
+                  pass
+              return "
