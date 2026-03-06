@@ -1,4 +1,4 @@
-name: High Quality News Generator
+name: Ultimate News Video Generator
 
 on:
   workflow_dispatch:
@@ -20,14 +20,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick ffmpeg
-          # فك قفل الحماية عن ImageMagick للسماح بإنشاء النصوص
           sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
 
       - name: Install Python Libraries
         run: |
           pip install requests beautifulsoup4 lxml gtts moviepy==1.0.3 pillow
 
-      - name: Generate All High Quality Videos
+      - name: Generate All Videos
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
@@ -41,7 +40,7 @@ jobs:
           if not hasattr(PIL.Image, 'ANTIALIAS'):
               PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
-          def get_all_trends(limit=5):
+          def get_all_trends(limit=3):
               try:
                   url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
                   r = requests.get(url, timeout=10)
@@ -49,21 +48,58 @@ jobs:
                   items = soup.find_all('item')[:limit]
                   return [item.title.text.split("-")[0].strip() for item in items]
               except:
-                  return ["Breaking News Update"] * limit
+                  return ["Breaking USA News Update"] * limit
 
-          def get_best_pexels_video(query):
+          def get_video_from_pexels(query):
               api_key = os.getenv('PEXELS_API_KEY')
               headers = {'Authorization': api_key}
-              # طلب فيديوهات عمودية حصراً وبجودة عالية
-              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait&size=large"
+              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
               try:
                   r = requests.get(url, headers=headers, timeout=15)
                   data = r.json()
                   if data['videos']:
+                      # اختيار أعلى جودة
                       video_files = data['videos'][0]['video_files']
-                      # اختيار أعلى دقة متاحة
-                      best_video = max(video_files, key=lambda x: x['width'] * x['height'])
-                      return best_video['link']
+                      return max(video_files, key=lambda x: x['width'])['link']
               except:
                   pass
-              return "
+              return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+
+          def create_clip(title, filename):
+              os.makedirs("temp", exist_ok=True)
+              tts = gTTS(text=f"Breaking news. {title}", lang='en')
+              audio_path = f"temp/a_{filename}.mp3"
+              tts.save(audio_path)
+              audio = AudioFileClip(audio_path)
+
+              v_url = get_video_from_pexels(" ".join(title.split()[:2]))
+              v_path = f"temp/v_{filename}.mp4"
+              with open(v_path, "wb") as f: f.write(requests.get(v_url).content)
+
+              clip = VideoFileClip(v_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(audio.duration + 1)
+              bar = ColorClip(size=(1080, 450), color=(200, 0, 0)).set_opacity(0.85).set_position(('center', 1250)).set_duration(clip.duration)
+              txt = TextClip(title.upper(), fontsize=70, color='white', font='DejaVu-Sans-Bold', method='caption', size=(950, None)).set_position(('center', 1300)).set_duration(clip.duration)
+              header = TextClip("LIVE NEWS", fontsize=100, color='yellow', font='DejaVu-Sans-Bold').set_position(('center', 200)).set_duration(clip.duration)
+              
+              return CompositeVideoClip([clip, bar, txt, header]).set_audio(audio)
+
+          os.makedirs("output", exist_ok=True)
+          all_news = get_all_trends(3) # قللنا العدد لـ 3 لسرعة الإنتاج
+
+          print("Creating Shorts...")
+          for i in range(2):
+              short = create_clip(all_news[i], f"short_{i}")
+              short.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
+
+          print("Creating Long Video...")
+          long_clips = [create_clip(news, f"long_{i}") for i, news in enumerate(all_news)]
+          final_long = concatenate_videoclips(long_clips, method="compose")
+          final_long.write_videofile("output/long_video.mp4", fps=24, codec="libx264")
+          EOT
+          python3 your_script.py
+
+      - name: Save Videos as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-final-videos
+          path: output/*.mp4
