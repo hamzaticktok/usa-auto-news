@@ -1,1 +1,105 @@
+name: Professional News Factory Fixed
 
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick ffmpeg
+          sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
+
+      - name: Install Python Libraries
+        run: |
+          pip install requests beautifulsoup4 lxml gtts moviepy==1.0.3 pillow
+
+      - name: Generate Professional Content
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: |
+          cat <<EOT > your_script.py
+          import os, requests
+          from bs4 import BeautifulSoup
+          from gtts import gTTS
+          import PIL.Image
+          
+          # حل مشكلة الخطأ: ربط الاختصار القديم بالجديد
+          if not hasattr(PIL.Image, 'ANTIALIAS'):
+              PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+          
+          # الآن نستورد MoviePy بعد حل مشكلة PIL
+          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip
+          import moviepy.video.fx.all as vfx
+
+          def get_video(query):
+              api_key = os.getenv('PEXELS_API_KEY')
+              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
+              headers = {'Authorization': api_key}
+              try:
+                  r = requests.get(url, headers=headers, timeout=15)
+                  return r.json()['videos'][0]['video_files'][0]['link']
+              except:
+                  return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+
+          def create_pro_short(title, filename):
+              os.makedirs("temp", exist_ok=True)
+              # 1. الصوت
+              tts = gTTS(text=f"Breaking news. {title}", lang='en')
+              audio_path = f"temp/a_{filename}.mp3"
+              tts.save(audio_path)
+              audio = AudioFileClip(audio_path)
+
+              # 2. الفيديو
+              v_url = get_video(" ".join(title.split()[:2]))
+              v_path = f"temp/v_{filename}.mp4"
+              with open(v_path, "wb") as f: f.write(requests.get(v_url).content)
+              
+              # تحجيم الفيديو مع تأثير الزوم
+              clip = VideoFileClip(v_path).resize(height=1920)
+              clip = clip.crop(x_center=clip.w/2, width=1080).set_duration(audio.duration + 1)
+              
+              # إضافة حركة زوم هادئة لجعل الفيديو احترافياً
+              clip = clip.fx(vfx.resize, lambda t: 1 + 0.02 * t)
+
+              # 3. التصميم (الهوية البصرية)
+              bar = ColorClip(size=(1080, 420), color=(180, 0, 0)).set_opacity(0.9).set_position(('center', 1250)).set_duration(clip.duration)
+              
+              # نص الخبر
+              txt = TextClip(title.upper(), fontsize=65, color='white', font='DejaVu-Sans-Bold', method='caption', size=(900, None)).set_position(('center', 1280)).set_duration(clip.duration)
+              
+              # شريط علوي
+              header = TextClip("BREAKING NEWS", fontsize=90, color='yellow', font='DejaVu-Sans-Bold').set_position(('center', 200)).set_duration(clip.duration)
+
+              return CompositeVideoClip([clip, bar, txt, header]).set_audio(audio)
+
+          os.makedirs("output", exist_ok=True)
+          url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+          r = requests.get(url)
+          soup = BeautifulSoup(r.content, 'xml')
+          trends = [item.title.text.split("-")[0].strip() for item in soup.find_all('item')[:2]]
+
+          for i, news in enumerate(trends):
+              print(f"Processing: {news}")
+              final = create_pro_short(news, f"n_{i}")
+              final.write_videofile(f"output/pro_short_{i+1}.mp4", fps=24, codec="libx264")
+          EOT
+          python3 your_script.py
+
+      - name: Save Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: news-final-videos
+          path: output/*.mp4
