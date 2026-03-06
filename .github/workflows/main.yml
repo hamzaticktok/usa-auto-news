@@ -1,4 +1,4 @@
-name: 4-Shorts Pro Factory Final
+name: 4-Shorts Pro Factory Final Fix
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Python Libraries
         run: |
-          pip install requests beautifulsoup4 edge-tts pillow numpy moviepy==1.0.3
+          pip install requests beautifulsoup4 lxml edge-tts pillow numpy moviepy==1.0.3
 
       - name: Run Generator
         env:
@@ -45,8 +45,18 @@ jobs:
               
               print("🌐 Fetching News...")
               res = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
-              items = BeautifulSoup(res.content, 'xml').find_all('item')[:4]
+              # محاولة استخدام lxml أولاً ثم التراجع لـ html.parser إذا فشل
+              try:
+                  soup = BeautifulSoup(res.content, 'lxml-xml')
+              except:
+                  soup = BeautifulSoup(res.content, 'html.parser')
               
+              items = soup.find_all('item')[:4]
+              
+              if not items:
+                  print("❌ No news items found!")
+                  return
+
               for i, item in enumerate(items):
                   try:
                       title = item.title.text.split(' - ')[0].replace('"', '')
@@ -54,7 +64,7 @@ jobs:
                       
                       # Voice
                       audio_path = f"output/audio_{i}.mp3"
-                      communicate = edge_tts.Communicate(f"Breaking. {title}", "en-US-ChristopherNeural")
+                      communicate = edge_tts.Communicate(f"Breaking news. {title}", "en-US-ChristopherNeural")
                       await communicate.save(audio_path)
                       voice = AudioFileClip(audio_path)
 
@@ -62,7 +72,11 @@ jobs:
                       headers = {'Authorization': api_key}
                       v_res = requests.get(f"https://api.pexels.com/videos/search?query={title.split()[0]}&per_page=1", headers=headers)
                       v_data = v_res.json()
-                      v_link = v_data['videos'][0]['video_files'][0]['link'] if v_data.get('videos') else "https://assets.mixkit.co/videos/preview/mixkit-abstract-technology-digital-background-43553-large.mp4"
+                      
+                      if v_data.get('videos'):
+                          v_link = v_data['videos'][0]['video_files'][0]['link']
+                      else:
+                          v_link = "https://assets.mixkit.co/videos/preview/mixkit-abstract-technology-digital-background-43553-large.mp4"
                       
                       v_path = f"raw_{i}.mp4"
                       with open(v_path, "wb") as f: f.write(requests.get(v_link).content)
@@ -70,17 +84,20 @@ jobs:
                       # Assemble
                       clip = VideoFileClip(v_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 1)
                       
-                      txt = TextClip(title.upper(), fontsize=70, color='white', font='Arial-Bold', method='caption', size=(900, None)).set_position('center').set_duration(clip.duration)
+                      # تحسين شكل النص
+                      txt_bg = ColorClip(size=(1080, 400), color=(0,0,0)).set_opacity(0.6).set_position(('center', 1300)).set_duration(clip.duration)
+                      wrapped_text = "\n".join(textwrap.wrap(title.upper(), width=20))
+                      txt = TextClip(wrapped_text, fontsize=70, color='white', font='Arial-Bold', method='caption', size=(900, None)).set_position(('center', 1350)).set_duration(clip.duration)
                       
-                      final = CompositeVideoClip([clip, txt]).set_audio(voice)
-                      final.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264", audio_codec="aac", preset="ultrafast")
+                      final = CompositeVideoClip([clip, txt_bg, txt]).set_audio(voice)
+                      final.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264", audio_codec="aac", preset="ultrafast", threads=4)
                       
                       # Cleanup
                       final.close()
                       clip.close()
                       voice.close()
                   except Exception as e:
-                      print(f"❌ Error in {i}: {e}")
+                      print(f"❌ Error in processing item {i}: {e}")
 
           if __name__ == "__main__":
               asyncio.run(main())
@@ -88,8 +105,8 @@ jobs:
           python3 news_to_video.py
 
       - name: Upload Results
-        if: always() # لضمان الرفع حتى لو فشل السكربت جزئياً
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Shorts-Factory-Output
+          name: Viral-Shorts-Package
           path: output/
