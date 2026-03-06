@@ -1,4 +1,4 @@
-name: Cinematic News Factory
+name: 4-Shorts Pro Factory with Music
 
 on:
   workflow_dispatch:
@@ -25,18 +25,25 @@ jobs:
       - name: Install Libraries
         run: pip install requests beautifulsoup4 gtts moviepy==1.0.3 pillow
 
-      - name: Generate Content
+      - name: Generate 4 Professional Shorts
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
           cat <<EOT > your_script.py
-          import os, requests
+          import os, requests, random
           from bs4 import BeautifulSoup
           from gtts import gTTS
           import PIL.Image
           if not hasattr(PIL.Image, 'ANTIALIAS'): PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-          
-          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips
+          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, CompositeAudioClip
+
+          # قائمة بموسيقى خلفية متنوعة (روابط مباشرة)
+          MUSIC_URLS = [
+              "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", # نمط 1
+              "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", # نمط 2
+              "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", # نمط 3
+              "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"  # نمط 4
+          ]
 
           def get_video(query):
               api_key = os.getenv('PEXELS_API_KEY')
@@ -47,55 +54,62 @@ jobs:
               except:
                   return "https://assets.mixkit.co/videos/preview/mixkit-news-studio-background-with-world-map-33303-large.mp4"
 
-          def make_cinematic_clip(title, i):
-              clean_title = title.split(' - ')[0]
-              # صوت بشري مع وقفات
-              tts = gTTS(text=f"Breaking update. . . {clean_title}. . . for more details, stay with us.", lang='en')
-              tts.save(f"v_{i}.mp3")
-              voice = AudioFileClip(f"v_{i}.mp3")
+          def create_pro_short(title, i):
+              clean_title = title.split(' - ')[0].replace('"', '').strip()
+              
+              # استخراج الكلمات المفتاحية للوصف
+              tags = f"#News #Trending #{clean_title.split()[0]} #BreakingNews"
+              print(f"\n✅ Video {i+1} Ready for Upload:")
+              print(f"📌 Title: {clean_title}")
+              print(f"🏷️ Hashtags: {tags}\n")
 
-              # فيديو مع زوم
+              # 1. الصوت (المذيع)
+              tts = gTTS(text=f"Breaking update. . . {clean_title}. . . Stay informed with us.", lang='en')
+              voice_path = f"v_{i}.mp3"
+              tts.save(voice_path)
+              voice = AudioFileClip(voice_path)
+
+              # 2. الموسيقى الخلفية (متغيرة لكل فيديو)
+              try:
+                  m_path = f"m_{i}.mp3"
+                  with open(m_path, "wb") as f: f.write(requests.get(MUSIC_URLS[i]).content)
+                  bg_music = AudioFileClip(m_path).volumex(0.12).set_duration(voice.duration + 1.5)
+                  final_audio = CompositeAudioClip([voice, bg_music])
+              except:
+                  final_audio = voice
+
+              # 3. جلب وتجهيز الفيديو
               v_url = get_video(" ".join(clean_title.split()[:2]))
-              with open(f"f_{i}.mp4", "wb") as f: f.write(requests.get(v_url).content)
+              v_path = f"f_{i}.mp4"
+              with open(v_path, "wb") as f: f.write(requests.get(v_url).content)
               
-              bg = VideoFileClip(f"f_{i}.mp4").resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 1)
+              clip = VideoFileClip(v_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 1.5)
               
-              # جرافيك احترافي (Lower Third)
-              overlay = ColorClip(size=(1080, 480), color=(0,0,0)).set_opacity(0.7).set_position(('center', 1320)).set_duration(bg.duration)
-              line = ColorClip(size=(1080, 8), color=(255, 204, 0)).set_position(('center', 1320)).set_duration(bg.duration)
+              # 4. الجرافيك الاحترافي
+              overlay = ColorClip(size=(1080, 500), color=(0,0,0)).set_opacity(0.7).set_position(('center', 1300)).set_duration(clip.duration)
+              gold_line = ColorClip(size=(1080, 12), color=(255, 215, 0)).set_position(('center', 1300)).set_duration(clip.duration)
               
-              txt = TextClip(clean_title.upper(), fontsize=60, color='white', font='DejaVu-Sans-Bold', 
-                             method='caption', size=(920, None)).set_position(('center', 1380)).set_duration(bg.duration)
+              txt = TextClip(clean_title.upper(), fontsize=65, color='white', font='DejaVu-Sans-Bold', 
+                             method='caption', size=(920, None)).set_position(('center', 1360)).set_duration(clip.duration)
               
-              tag = TextClip(" TOP STORY ", fontsize=45, color='black', bg_color='yellow', font='DejaVu-Sans-Bold').set_position((80, 250)).set_duration(bg.duration)
+              badge = TextClip(" BREAKING ", fontsize=50, color='white', bg_color='red', font='DejaVu-Sans-Bold').set_position((80, 220)).set_duration(clip.duration)
 
-              return CompositeVideoClip([bg, overlay, line, txt, tag]).set_audio(voice)
+              final_video = CompositeVideoClip([clip, overlay, gold_line, txt, badge]).set_audio(final_audio)
+              final_video.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
 
           os.makedirs("output", exist_ok=True)
-          # حل مشكلة الـ XML باستخدام html.parser
           r = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
           soup = BeautifulSoup(r.content, 'html.parser')
-          # جلب العناوين من وسوم <title> التي تلي <item>
-          items = soup.find_all('item')[:3]
-          trends = [item.title.text for item in items]
+          items = soup.find_all('item')[:4]
           
-          all_clips = []
-          for i, t in enumerate(trends):
-              print(f"Creating Cinematic Clip {i+1}...")
-              c = make_cinematic_clip(t, i)
-              all_clips.append(c)
-              if i < 2: # حفظ فيديوهين Shorts
-                  c.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
-
-          # إنشاء الفيديو الطويل (دمج كل المقاطع)
-          print("Merging into Long Video...")
-          final_long = concatenate_videoclips(all_clips, method="compose")
-          final_long.write_videofile("output/long_news_full.mp4", fps=24, codec="libx264")
+          for i, item in enumerate(items):
+              print(f"🚀 Working on Short {i+1}...")
+              create_pro_short(item.title.text, i)
           EOT
           python3 your_script.py
 
-      - name: Upload
+      - name: Upload 4 Professional Shorts
         uses: actions/upload-artifact@v4
         with:
-          name: news-cinematic-package
+          name: 4-Shorts-Pro-Music-Package
           path: output/*.mp4
