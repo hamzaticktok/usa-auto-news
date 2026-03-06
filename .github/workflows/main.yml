@@ -1,34 +1,7 @@
-name: USA Trends Auto-Pro (Fixed)
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg imagemagick
-          sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
-          # تثبيت المكتبات مع معالجة مشكلة Pillow
-          pip install moviepy==1.0.3 requests beautifulsoup4 gTTS lxml Pillow==9.5.0
-
-      - name: Generate Pro Video
+- name: Generate Pro Video
         run: |
           cat <<EOT > your_script.py
-          import os, requests
+          import os, requests, random
           from bs4 import BeautifulSoup
           from gtts import gTTS
           from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip
@@ -37,60 +10,44 @@ jobs:
               PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
           def get_usa_trends():
-              try:
-                  url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-                  response = requests.get(url, timeout=10)
-                  soup = BeautifulSoup(response.content, 'xml')
-                  item = soup.find('item')
-                  return item.title.text.split("-")[0].strip()
-              except:
-                  return "Major Update in United States"
+              url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+              response = requests.get(url)
+              soup = BeautifulSoup(response.content, 'xml')
+              item = soup.find('item')
+              return item.title.text.split("-")[0].strip()
 
           trend_title = get_usa_trends()
+          # استخراج الكلمة المفتاحية للبحث عن فيديو (أول كلمتين من الخبر)
+          search_query = "+".join(trend_title.split()[:2])
+
           os.makedirs("output", exist_ok=True)
           os.makedirs("temp", exist_ok=True)
 
-          # 1. توليد التعليق الصوتي
-          voice_text = f"Breaking news. {trend_title}. Reporting for Trends USA 25."
-          tts = gTTS(text=voice_text, lang='en')
+          # 1. التعليق الصوتي
+          tts = gTTS(text=f"Breaking news. {trend_title}", lang='en')
           tts.save("temp/voice.mp3")
           audio = AudioFileClip("temp/voice.mp3")
 
-          # 2. جلب الفيديو (مع معالجة الأخطاء)
-          video_url = "https://assets.mixkit.co/videos/preview/mixkit-flag-of-the-united-states-of-america-31354-large.mp4"
+          # 2. البحث عن فيديو توضيحي (استخدام بيكسلز بدون API كحل مؤقت أو روابط مباشرة)
+          # سنحاول جلب فيديو "News" أو "America" لضمان ظهور محتوى بصري
+          video_url = "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+          
+          print(f"🎬 Creating video for: {trend_title}")
+          
           try:
-              print("Downloading background...")
-              r = requests.get(video_url, timeout=20)
+              r = requests.get(video_url)
               with open("temp/bg.mp4", "wb") as f: f.write(r.content)
               bg_clip = VideoFileClip("temp/bg.mp4").resize(height=1920)
-              bg_clip = bg_clip.crop(x_center=bg_clip.w/2, width=1080)
-          except Exception as e:
-              print(f"Video download failed: {e}. Using professional color background.")
-              bg_clip = ColorClip(size=(1080, 1920), color=(15, 15, 15))
-
-          bg_clip = bg_clip.set_duration(audio.duration + 2)
-
-          # 3. النصوص
-          try:
-              bar = ColorClip(size=(1080, 450), color=(180, 0, 0)).set_opacity(0.85).set_position(('center', 1350)).set_duration(bg_clip.duration)
-              
-              txt = TextClip(trend_title.upper(), fontsize=70, color='white', font='Arial-Bold', method='caption', size=(950, None))
-              txt = txt.set_position(('center', 1400)).set_duration(bg_clip.duration)
-              
-              head = TextClip("BREAKING NEWS", fontsize=110, color='yellow', font='Arial-Bold').set_position(('center', 250)).set_duration(bg_clip.duration)
-              
-              final = CompositeVideoClip([bg_clip, bar, txt, head])
+              bg_clip = bg_clip.crop(x_center=bg_clip.w/2, width=1080).set_duration(audio.duration + 2)
           except:
-              final = bg_clip
+              bg_clip = ColorClip(size=(1080, 1920), color=(20,20,20)).set_duration(audio.duration + 2)
 
-          final = final.set_audio(audio)
+          # 3. دمج النصوص الاحترافية
+          bar = ColorClip(size=(1080, 400), color=(200, 0, 0)).set_opacity(0.8).set_position(('center', 1300)).set_duration(bg_clip.duration)
+          txt = TextClip(trend_title.upper(), fontsize=65, color='white', font='Arial-Bold', method='caption', size=(900, None)).set_position(('center', 1350)).set_duration(bg_clip.duration)
+          header = TextClip("USA TRENDS", fontsize=90, color='yellow', font='Arial-Bold').set_position(('center', 200)).set_duration(bg_clip.duration)
+
+          final = CompositeVideoClip([bg_clip, bar, txt, header]).set_audio(audio)
           final.write_videofile("output/final_trend.mp4", codec="libx264", audio_codec="aac", fps=24)
           EOT
-          
           python3 your_script.py
-
-      - name: Upload Result
-        uses: actions/upload-artifact@v4
-        with:
-          name: USA-Daily-Shorts
-          path: output/final_trend.mp4
