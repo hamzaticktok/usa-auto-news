@@ -1,43 +1,28 @@
-name: TrendsUSA Final Fix
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+name: Final Fix TrendsUSA
+on: [workflow_dispatch, push]
 
 jobs:
-  build:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Get Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
+      - name: Install Tools
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
-          pip install moviepy imageio[ffmpeg]
+          pip install moviepy
 
-      - name: Find and Run Script
-        run: |
-          # البحث عن الملف في كل المجلدات وتشغيله من مكانه الحقيقي
-          SCRIPT_PATH=$(find . -name "your_script.py" | head -n 1)
-          if [ -z "$SCRIPT_PATH" ]; then
-            echo "❌ Error: your_script.py not found! Please create it in GitHub interface."
-            exit 1
-          fi
-          echo "✅ Found script at: $SCRIPT_PATH"
-          SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
-          cd "$SCRIPT_DIR"
-          python3 your_script.py
+      - name: Run
+        run: python3 your_script.py
 
-      - name: Upload Result
-        if: always()
+      - name: Save Video
         uses: actions/upload-artifact@v4
         with:
-          name: video-output
-          path: "**/output/*.mp4"
+          name: final-video
+          path: output/
