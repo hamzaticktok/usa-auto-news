@@ -1,4 +1,4 @@
-name: Ultimate News Factory PRO
+name: Human-Like News Factory
 
 on:
   workflow_dispatch:
@@ -8,25 +8,24 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
-      - name: Install System Dependencies
+      - name: OS Fixes
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick ffmpeg
           sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
 
-      - name: Install Python Libraries
-        run: |
-          pip install requests beautifulsoup4 lxml gtts moviepy==1.0.3 pillow
+      - name: Install
+        run: pip install requests beautifulsoup4 gtts moviepy==1.0.3 pillow
 
-      - name: Generate Professional Content
+      - name: Create Human-Like Video
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
@@ -37,81 +36,68 @@ jobs:
           import PIL.Image
           if not hasattr(PIL.Image, 'ANTIALIAS'): PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
           
-          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips
-          import moviepy.video.fx.all as vfx
+          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips, CompositeAudioClip
 
           def get_video(query):
               api_key = os.getenv('PEXELS_API_KEY')
-              headers = {'Authorization': api_key}
               url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
-              try:
-                  r = requests.get(url, headers=headers, timeout=15)
-                  return r.json()['videos'][0]['video_files'][0]['link']
-              except:
-                  return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+              r = requests.get(url, headers={'Authorization': api_key})
+              try: return r.json()['videos'][0]['video_files'][0]['link']
+              except: return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
 
-          def create_clip(title, index):
-              os.makedirs("temp", exist_ok=True)
-              # 1. الصوت (المذيع)
-              tts = gTTS(text=f"Breaking news. {title}", lang='en')
-              tts.save(f"temp/voice_{index}.mp3")
-              voice = AudioFileClip(f"temp/voice_{index}.mp3")
+          def make_pro_clip(title, i):
+              # 1. صوت مع وقفات طبيعية
+              clean_title = title.split(' - ')[0]
+              tts = gTTS(text=f"Attention. . . {clean_title}. . . stay tuned for more.", lang='en', slow=False)
+              tts.save(f"v_{i}.mp3")
+              voice = AudioFileClip(f"v_{i}.mp3")
 
-              # 2. الفيديو مع زوم
-              v_url = get_video(" ".join(title.split()[:2]))
-              with open(f"temp/v_{index}.mp4", "wb") as f: f.write(requests.get(v_url).content)
+              # 2. فيديو مع حركة سينمائية
+              v_url = get_video(" ".join(clean_title.split()[:2]))
+              with open(f"f_{i}.mp4", "wb") as f: f.write(requests.get(v_url).content)
               
-              clip = VideoFileClip(f"temp/v_{index}.mp4").resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 1.5)
-              clip = clip.fx(vfx.resize, lambda t: 1 + 0.03 * t)
-
-              # 3. الجرافيك
-              bg_bar = ColorClip(size=(1080, 450), color=(180, 0, 0)).set_opacity(0.85).set_position(('center', 1250)).set_duration(clip.duration)
+              bg = VideoFileClip(f"f_{i}.mp4").resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 2)
+              # تأثير التقريب البطيء (Ken Burns)
+              bg = bg.fl_image(lambda image: PIL.Image.fromarray(image).resize((int(1080*1.1), int(1920*1.1))).crop((20,20,1100,1940)).resize((1080,1920)))
               
-              # نص الخبر مع تصميم احترافي
-              txt = TextClip(title.upper(), fontsize=70, color='white', font='DejaVu-Sans-Bold', 
-                             method='caption', size=(950, None), stroke_color='black', stroke_width=2).set_position(('center', 1280)).set_duration(clip.duration)
+              # 3. جرافيك القنوات الإخبارية
+              overlay = ColorClip(size=(1080, 500), color=(0,0,0)).set_opacity(0.6).set_position(('center', 1300)).set_duration(bg.duration)
+              red_line = ColorClip(size=(1080, 10), color=(255,0,0)).set_position(('center', 1300)).set_duration(bg.duration)
               
-              header = TextClip("LIVE NEWS", fontsize=100, color='yellow', font='DejaVu-Sans-Bold',
-                                stroke_color='black', stroke_width=2).set_position(('center', 200)).set_duration(clip.duration)
+              txt = TextClip(clean_title.upper(), fontsize=65, color='white', font='DejaVu-Sans-Bold', 
+                             method='caption', size=(900, None)).set_position(('center', 1350)).set_duration(bg.duration)
+              
+              badge = TextClip("BREAKING", fontsize=50, color='white', bg_color='red', font='DejaVu-Sans-Bold').set_position((100, 200)).set_duration(bg.duration)
 
-              return CompositeVideoClip([clip, bg_bar, txt, header]).set_audio(voice)
+              return CompositeVideoClip([bg, overlay, red_line, txt, badge]).set_audio(voice)
 
+          # التنفيذ لـ 3 أخبار
           os.makedirs("output", exist_ok=True)
-          # جلب 4 أخبار
-          r = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
-          soup = BeautifulSoup(r.content, 'xml')
-          trends = [item.title.text.split("-")[0].strip() for item in soup.find_all('item')[:4]]
-
-          clips = []
-          for i, news in enumerate(trends):
-              print(f"Processing Clip {i+1}...")
-              c = create_clip(news, i)
-              clips.append(c)
-              # حفظ الـ Shorts الفردية (أول خبرين)
-              if i < 2:
-                  c.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
-
-          # إنشاء الفيديو الطويل (تجميع كل المقاطع)
-          print("Creating Long Video...")
-          # إضافة موسيقى خلفية للفيديو الطويل فقط
-          long_video = concatenate_videoclips(clips, method="compose")
+          soup = BeautifulSoup(requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en").content, 'xml')
+          trends = [item.title.text for item in soup.find_all('item')[:3]]
           
-          # محاولة إضافة موسيقى خلفية (اختياري)
-          try:
-              music_url = "https://www.bensound.com/bensound-music/bensound-evolution.mp3"
-              with open("temp/music.mp3", "wb") as f: f.write(requests.get(music_url).content)
-              bg_music = AudioFileClip("temp/music.mp3").volumex(0.1).set_duration(long_video.duration)
-              final_audio = CompositeAudioClip([long_video.audio, bg_music])
-              long_video = long_video.set_audio(final_audio)
-          except:
-              pass
+          all_clips = []
+          for i, t in enumerate(trends):
+              c = make_pro_clip(t, i)
+              all_clips.append(c)
+              if i < 2: c.write_videofile(f"output/short_{i+1}.mp4", fps=24)
 
-          long_video.write_videofile("output/long_news_video.mp4", fps=24, codec="libx264")
+          # الفيديو الطويل مع موسيقى خلفية
+          long_v = concatenate_videoclips(all_clips, method="compose")
+          # إضافة موسيقى أخبار (Background Music)
+          try:
+              m_url = "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3"
+              with open("music.mp3", "wb") as f: f.write(requests.get(m_url).content)
+              music = AudioFileClip("music.mp3").volumex(0.15).set_duration(long_v.duration)
+              long_v = long_v.set_audio(CompositeAudioClip([long_v.audio, music]))
+          except: pass
+          
+          long_v.write_videofile("output/long_video_pro.mp4", fps=24)
           EOT
           python3 your_script.py
 
-      - name: Upload All Professional Content
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: news-professional-package
+          name: news-human-pack
           path: output/*.mp4
