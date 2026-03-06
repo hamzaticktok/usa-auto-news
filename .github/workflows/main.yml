@@ -1,4 +1,4 @@
-name: 4-Shorts Pro Factory with Music
+name: 4-Shorts Pro Factory Final
 
 on:
   workflow_dispatch:
@@ -8,13 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.10'
 
       - name: Install System Tools
         run: |
@@ -22,81 +22,74 @@ jobs:
           sudo apt-get install -y imagemagick ffmpeg
           sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
 
-      - name: Install Libraries
-        run: pip install requests beautifulsoup4 edge-tts moviepy==1.0.3 pillow numpy
+      - name: Install Python Libraries
+        run: |
+          pip install requests beautifulsoup4 edge-tts pillow numpy moviepy==1.0.3
 
-      - name: Generate 4 Professional Shorts
+      - name: Run Generator
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
-          cat <<EOT > your_script.py
+          cat << 'EOF' > news_to_video.py
           import os, requests, random, textwrap, asyncio
           from bs4 import BeautifulSoup
           import edge_tts
-          import PIL.Image
-          if not hasattr(PIL.Image, 'ANTIALIAS'): PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-          from moviepy.editor import *
+          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ColorClip, AudioFileClip, vfx
           from moviepy.config import change_settings
 
           change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
 
-          class ProShortsFactory:
-              def __init__(self):
-                  self.api_key = os.getenv('PEXELS_API_KEY')
-                  self.output_dir = "output"
-                  self.voice = "en-US-ChristopherNeural" 
-                  os.makedirs(self.output_dir, exist_ok=True)
-                  
-              async def generate_voice(self, text, output_path):
-                  communicate = edge_tts.Communicate(text, self.voice)
-                  await communicate.save(output_path)
-
-              def get_premium_video(self, query):
-                  headers = {'Authorization': self.api_key}
-                  search_query = f"{query} cinematic"
-                  url = f"https://api.pexels.com/videos/search?query={search_query}&per_page=15&orientation=portrait"
-                  try:
-                      r = requests.get(url, headers=headers, timeout=15)
-                      vids = r.json().get('videos', [])
-                      if vids:
-                          return random.choice(vids)['video_files'][0]['link']
-                      return "https://assets.mixkit.co/videos/preview/mixkit-global-technologies-and-world-map-background-33306-large.mp4"
-                  except:
-                      return "https://assets.mixkit.co/videos/preview/mixkit-global-technologies-and-world-map-background-33306-large.mp4"
-
-              async def create_video(self, title, index):
-                  print(f"💎 Creating Premium Short {index+1}...")
-                  clean_title = title.split(' - ')[0].replace('"', '').strip()
-                  
-                  voice_path = f"voice_{index}.mp3"
-                  script_text = f"Breaking News update. {clean_title}. Stay tuned for more details."
-                  await self.generate_voice(script_text, voice_path)
-                  audio_v = AudioFileClip(voice_path)
-
-                  video_url = self.get_premium_video(clean_title.split()[0])
-                  video_path = f"raw_{index}.mp4"
-                  with open(video_path, "wb") as f: f.write(requests.get(video_url).content)
-                  
-                  duration = audio_v.duration + 1.5
-                  clip = VideoFileClip(video_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(duration)
-                  clip = clip.fx(vfx.resize, lambda t: 1 + 0.03 * t)
-
-                  top_bar = ColorClip(size=(1080, 120), color=(200, 0, 0)).set_position(('center', 150)).set_opacity(0.9).set_duration(duration)
-                  top_text = TextClip("🔴 BREAKING NEWS", fontsize=60, color='white', font='Arial-Bold').set_position(('center', 175)).set_duration(duration)
-                  headline_bg = ColorClip(size=(1080, 500), color=(0, 0, 0)).set_opacity(0.7).set_position(('center', 1300)).set_duration(duration)
-                  
-                  wrapped_text = \"\\n\".join(textwrap.wrap(clean_title.upper(), width=22))
-                  headline_text = TextClip(wrapped_text, fontsize=70, color='white', font='Arial-Bold', 
-                                           method='caption', size=(950, None), align='center').set_position(('center', 1350)).set_duration(duration)
-
-                  final_video = CompositeVideoClip([clip, top_bar, top_text, headline_bg, headline_text], size=(1080, 1920))
-                  final_video = final_video.set_audio(audio_v)
-                  
-                  output_file = f"{self.output_dir}/Viral_Short_{index+1}.mp4"
-                  final_video.write_videofile(output_file, fps=24, codec="libx264", audio_codec="aac", threads=4)
-                  
-                  final_video.close()
-                  clip.close()
-                  audio_v.close()
-
           async def main():
+              api_key = os.getenv('PEXELS_API_KEY')
+              os.makedirs("output", exist_ok=True)
+              
+              print("🌐 Fetching News...")
+              res = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
+              items = BeautifulSoup(res.content, 'xml').find_all('item')[:4]
+              
+              for i, item in enumerate(items):
+                  try:
+                      title = item.title.text.split(' - ')[0].replace('"', '')
+                      print(f"🎬 Creating Short {i+1}: {title}")
+                      
+                      # Voice
+                      audio_path = f"output/audio_{i}.mp3"
+                      communicate = edge_tts.Communicate(f"Breaking. {title}", "en-US-ChristopherNeural")
+                      await communicate.save(audio_path)
+                      voice = AudioFileClip(audio_path)
+
+                      # Video
+                      headers = {'Authorization': api_key}
+                      v_res = requests.get(f"https://api.pexels.com/videos/search?query={title.split()[0]}&per_page=1", headers=headers)
+                      v_data = v_res.json()
+                      v_link = v_data['videos'][0]['video_files'][0]['link'] if v_data.get('videos') else "https://assets.mixkit.co/videos/preview/mixkit-abstract-technology-digital-background-43553-large.mp4"
+                      
+                      v_path = f"raw_{i}.mp4"
+                      with open(v_path, "wb") as f: f.write(requests.get(v_link).content)
+
+                      # Assemble
+                      clip = VideoFileClip(v_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 1)
+                      
+                      txt = TextClip(title.upper(), fontsize=70, color='white', font='Arial-Bold', method='caption', size=(900, None)).set_position('center').set_duration(clip.duration)
+                      
+                      final = CompositeVideoClip([clip, txt]).set_audio(voice)
+                      final.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264", audio_codec="aac", preset="ultrafast")
+                      
+                      # Cleanup
+                      final.close()
+                      clip.close()
+                      voice.close()
+                  except Exception as e:
+                      print(f"❌ Error in {i}: {e}")
+
+          if __name__ == "__main__":
+              asyncio.run(main())
+          EOF
+          python3 news_to_video.py
+
+      - name: Upload Results
+        if: always() # لضمان الرفع حتى لو فشل السكربت جزئياً
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shorts-Factory-Output
+          path: output/
