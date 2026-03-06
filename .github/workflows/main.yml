@@ -1,4 +1,4 @@
-name: USA Trends Final Pro
+name: USA Trends Auto-Pro (Fixed)
 
 on:
   workflow_dispatch:
@@ -17,78 +17,74 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Advanced Tools
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg imagemagick
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
-          pip install moviepy==1.0.3 requests beautifulsoup4 gTTS lxml
+          # تثبيت المكتبات مع معالجة مشكلة Pillow
+          pip install moviepy==1.0.3 requests beautifulsoup4 gTTS lxml Pillow==9.5.0
 
       - name: Generate Pro Video
         run: |
           cat <<EOT > your_script.py
-          import os, requests, random
+          import os, requests
           from bs4 import BeautifulSoup
           from gtts import gTTS
           from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip
+          import PIL.Image
+          if not hasattr(PIL.Image, 'ANTIALIAS'):
+              PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
           def get_usa_trends():
-              url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-              response = requests.get(url)
-              soup = BeautifulSoup(response.content, 'xml')
-              item = soup.find('item')
-              return item.title.text.split("-")[0].strip()
+              try:
+                  url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+                  response = requests.get(url, timeout=10)
+                  soup = BeautifulSoup(response.content, 'xml')
+                  item = soup.find('item')
+                  return item.title.text.split("-")[0].strip()
+              except:
+                  return "Major Update in United States"
 
           trend_title = get_usa_trends()
           os.makedirs("output", exist_ok=True)
           os.makedirs("temp", exist_ok=True)
 
-          # 1. توليد الصوت
-          voice_text = f"Breaking news. {trend_title}. Subscribe to Trends USA 25 for more."
-          tts = gTTS(text=voice_text, lang='en', slow=False)
+          # 1. توليد التعليق الصوتي
+          voice_text = f"Breaking news. {trend_title}. Reporting for Trends USA 25."
+          tts = gTTS(text=voice_text, lang='en')
           tts.save("temp/voice.mp3")
           audio = AudioFileClip("temp/voice.mp3")
 
-          # 2. جلب فيديو خلفية حقيقي (روابط مباشرة ومضمونة)
-          # سنستخدم قائمة روابط احتياطية في حال فشل أحدها
-          video_sources = [
-              "https://assets.mixkit.co/videos/preview/mixkit-flag-of-the-united-states-of-america-31354-large.mp4",
-              "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
-          ]
-          
-          video_path = "temp/bg_video.mp4"
-          for url in video_sources:
-              try:
-                  print(f"Trying to download: {url}")
-                  r = requests.get(url, timeout=15)
-                  with open(video_path, "wb") as f: f.write(r.content)
-                  bg_clip = VideoFileClip(video_path)
-                  break
-              except:
-                  continue
-          else:
-              # إذا فشلت كل الروابط، ننشئ خلفية ملونة كحل أخير
-              bg_clip = ColorClip(size=(1080, 1920), color=(20, 20, 20))
-
-          # ضبط مقاسات الفيديو ليكون Shorts (9:16)
-          bg_clip = bg_clip.resize(height=1920).crop(x_center=bg_clip.w/2, width=1080).set_duration(audio.duration + 2)
-
-          # 3. النصوص الاحترافية
+          # 2. جلب الفيديو (مع معالجة الأخطاء)
+          video_url = "https://assets.mixkit.co/videos/preview/mixkit-flag-of-the-united-states-of-america-31354-large.mp4"
           try:
-              # شريط الخبر (Headline Bar)
-              bar = ColorClip(size=(1080, 400), color=(200, 0, 0)).set_opacity(0.8).set_position(('center', 1300)).set_duration(bg_clip.duration)
-              
-              news_txt = TextClip(trend_title.upper(), fontsize=70, color='white', font='Arial-Bold', method='caption', size=(950, None))
-              news_txt = news_txt.set_position(('center', 1350)).set_duration(bg_clip.duration)
-              
-              logo = TextClip("TRENDS USA 25", fontsize=50, color='yellow', font='Arial-Bold').set_position(('center', 200)).set_duration(bg_clip.duration)
+              print("Downloading background...")
+              r = requests.get(video_url, timeout=20)
+              with open("temp/bg.mp4", "wb") as f: f.write(r.content)
+              bg_clip = VideoFileClip("temp/bg.mp4").resize(height=1920)
+              bg_clip = bg_clip.crop(x_center=bg_clip.w/2, width=1080)
+          except Exception as e:
+              print(f"Video download failed: {e}. Using professional color background.")
+              bg_clip = ColorClip(size=(1080, 1920), color=(15, 15, 15))
 
-              final_video = CompositeVideoClip([bg_clip, bar, news_txt, logo])
+          bg_clip = bg_clip.set_duration(audio.duration + 2)
+
+          # 3. النصوص
+          try:
+              bar = ColorClip(size=(1080, 450), color=(180, 0, 0)).set_opacity(0.85).set_position(('center', 1350)).set_duration(bg_clip.duration)
+              
+              txt = TextClip(trend_title.upper(), fontsize=70, color='white', font='Arial-Bold', method='caption', size=(950, None))
+              txt = txt.set_position(('center', 1400)).set_duration(bg_clip.duration)
+              
+              head = TextClip("BREAKING NEWS", fontsize=110, color='yellow', font='Arial-Bold').set_position(('center', 250)).set_duration(bg_clip.duration)
+              
+              final = CompositeVideoClip([bg_clip, bar, txt, head])
           except:
-              final_video = bg_clip
+              final = bg_clip
 
-          final_video = final_video.set_audio(audio)
-          final_video.write_videofile("output/final_trend.mp4", codec="libx264", audio_codec="aac", fps=24)
+          final = final.set_audio(audio)
+          final.write_videofile("output/final_trend.mp4", codec="libx264", audio_codec="aac", fps=24)
           EOT
           
           python3 your_script.py
