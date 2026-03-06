@@ -1,4 +1,37 @@
-import os, requests
+name: News Multi-Video Generator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick ffmpeg
+          sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
+
+      - name: Install Python Libraries
+        run: |
+          pip install requests beautifulsoup4 lxml gtts moviepy==1.0.3 pillow
+
+      - name: Generate All Videos
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: |
+          cat <<EOT > your_script.py
+          import os, requests
           from bs4 import BeautifulSoup
           from gtts import gTTS
           from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips
@@ -8,11 +41,14 @@ import os, requests
               PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
           def get_all_trends(limit=5):
-              url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-              r = requests.get(url, timeout=10)
-              soup = BeautifulSoup(r.content, 'xml')
-              items = soup.find_all('item')[:limit]
-              return [item.title.text.split("-")[0].strip() for item in items]
+              try:
+                  url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+                  r = requests.get(url, timeout=10)
+                  soup = BeautifulSoup(r.content, 'xml')
+                  items = soup.find_all('item')[:limit]
+                  return [item.title.text.split("-")[0].strip() for item in items]
+              except:
+                  return ["Breaking USA News Update"] * limit
 
           def get_video_from_pexels(query):
               api_key = os.getenv('PEXELS_API_KEY')
@@ -20,26 +56,29 @@ import os, requests
               url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
               try:
                   r = requests.get(url, headers=headers, timeout=15)
-                  video_url = r.json()['videos'][0]['video_files'][0]['link']
-                  return video_url
+                  data = r.json()
+                  if data['videos']:
+                      return data['videos'][0]['video_files'][0]['link']
               except:
-                  return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+                  pass
+              return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
 
           def create_single_clip(title, filename):
-              # إنشاء الصوت
+              os.makedirs("temp", exist_ok=True)
+              # 1. الصوت
               tts = gTTS(text=f"Breaking news. {title}", lang='en')
               audio_path = f"temp/audio_{filename}.mp3"
               tts.save(audio_path)
               audio = AudioFileClip(audio_path)
 
-              # جلب الفيديو
+              # 2. الفيديو
               search_q = " ".join(title.split()[:2])
               v_url = get_video_from_pexels(search_q)
               v_r = requests.get(v_url)
               v_path = f"temp/bg_{filename}.mp4"
               with open(v_path, "wb") as f: f.write(v_r.content)
 
-              # معالجة الفيديو والنصوص
+              # 3. المعالجة
               clip = VideoFileClip(v_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(audio.duration + 1)
               bar = ColorClip(size=(1080, 400), color=(200, 0, 0)).set_opacity(0.8).set_position(('center', 1300)).set_duration(clip.duration)
               txt = TextClip(title.upper(), fontsize=60, color='white', font='DejaVu-Sans-Bold', method='caption', size=(900, None)).set_position(('center', 1350)).set_duration(clip.duration)
@@ -47,23 +86,29 @@ import os, requests
               
               return CompositeVideoClip([clip, bar, txt, header]).set_audio(audio)
 
-          # التنفيذ
           os.makedirs("output", exist_ok=True)
           os.makedirs("temp", exist_ok=True)
           all_news = get_all_trends(5)
 
-          # 1. إنتاج الـ Shorts (أول خبرين)
-          short1 = create_single_clip(all_news[0], "short1")
-          short1.write_videofile("output/short_1.mp4", fps=24)
+          # إنتاج 2 Shorts
+          print("Creating Shorts...")
+          for i in range(2):
+              short = create_single_clip(all_news[i], f"short_{i}")
+              short.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
 
-          short2 = create_single_clip(all_news[1], "short2")
-          short2.write_videofile("output/short_2.mp4", fps=24)
-
-          # 2. إنتاج الفيديو الطويل (تجميع 5 أخبار)
+          # إنتاج الفيديو الطويل
           print("Creating Long Video...")
           long_clips = []
           for i, news in enumerate(all_news):
               long_clips.append(create_single_clip(news, f"long_{i}"))
           
           final_long = concatenate_videoclips(long_clips, method="compose")
-          final_long.write_videofile("output/long_video.mp4", fps=24)
+          final_long.write_videofile("output/long_video.mp4", fps=24, codec="libx264")
+          EOT
+          python3 your_script.py
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: news-production-pack
+          path: output/*.mp4
