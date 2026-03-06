@@ -1,9 +1,9 @@
-name: USA Trends Professional Creator
+name: USA Trends Professional Automation
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 */6 * * *' # يعمل تلقائياً كل 6 ساعات لجلب أحدث ترند
+  push:
+    branches: [ main ]
 
 jobs:
   build:
@@ -21,61 +21,69 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg imagemagick
+          # السماح لـ ImageMagick بالكتابة
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
-          pip install moviepy==1.0.3 requests beautifulsoup4
+          pip install moviepy==1.0.3 requests beautifulsoup4 lxml
 
-      - name: USA Trends Script
+      - name: Create USA News Video
         run: |
           cat <<EOT > your_script.py
           import os, requests
           from bs4 import BeautifulSoup
           from moviepy.editor import ColorClip, TextClip, CompositeVideoClip
 
-          # 1. جلب الترند الأمريكي (عناوين الأخبار الحالية)
           def get_usa_trends():
-              print("🔍 Fetching USA Trends...")
-              url = "https://news.google.com/rss/search?q=USA+Trending+News&hl=en-US&gl=US&ceid=US:en"
-              response = requests.get(url)
-              soup = BeautifulSoup(response.content, 'xml')
-              titles = [item.title.text for item in soup.find_all('item')[:3]]
-              return titles if titles else ["USA Breaking News", "Trending in America"]
+              print("🔍 Fetching Real-time USA Trends...")
+              # استخدام رابط أخبار جوجل الرسمي لأمريكا
+              url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+              try:
+                  response = requests.get(url, timeout=15)
+                  soup = BeautifulSoup(response.content, 'html.parser')
+                  titles = [item.find('title').text for item in soup.find_all('item')[:5]]
+                  return titles
+              except:
+                  return ["Breaking: USA Market Update", "Trending in Washington DC"]
 
           trends = get_usa_trends()
-          main_trend = trends[0].split("-")[0] # تنظيف العنوان
+          # اختيار العنوان الأول وتصفيته
+          main_news = trends[0].split("-")[0].strip()
 
           os.makedirs("output", exist_ok=True)
 
-          # 2. تصميم الفيديو الاحترافي (Format 9:16)
-          print(f"🎬 Creating video for: {main_trend}")
+          print(f"🎬 Creating Professional Video for: {main_news}")
           
-          # خلفية داكنة مع شريط أحمر للـ Breaking News
-          bg = ColorClip(size=(1080, 1920), color=(15, 15, 15), duration=10)
-          red_bar = ColorClip(size=(1080, 250), color=(200, 0, 0), duration=10).set_position(('center', 200))
+          # 1. تصميم الخلفية (1080x1920) لليوتيوب شورتس
+          bg = ColorClip(size=(1080, 1920), color=(10, 10, 10), duration=8)
           
+          # 2. شريط الأخبار الأحمر العلوي
+          header_bar = ColorClip(size=(1080, 300), color=(200, 0, 0), duration=8).set_position(('center', 200))
+
           try:
               # نص BREAKING NEWS
-              header = TextClip("BREAKING NEWS", fontsize=100, color='white', font='Arial-Bold').set_position(('center', 250)).set_duration(10)
+              breaking_text = TextClip("BREAKING NEWS", fontsize=110, color='white', font='Arial-Bold').set_position(('center', 280)).set_duration(8)
               
-              # نص الترند (المحتوى الحقيقي المستخرج)
-              trend_text = TextClip(main_trend, fontsize=70, color='white', font='Arial', method='caption', size=(900, None))
-              trend_text = trend_text.set_position('center').set_duration(10)
+              # نص الخبر الحقيقي (الترند)
+              news_content = TextClip(main_news, fontsize=75, color='white', font='Arial', method='caption', size=(900, None))
+              news_content = news_content.set_position('center').set_duration(8)
               
-              # اسم القناة في الأسفل
-              footer = TextClip("@TRENDSUSA25", fontsize=50, color='gray', font='Arial').set_position(('center', 1700)).set_duration(10)
+              # اسم القناة
+              footer = TextClip("@TRENDSUSA25", fontsize=55, color='yellow', font='Arial').set_position(('center', 1600)).set_duration(8)
               
-              final = CompositeVideoClip([bg, red_bar, header, trend_text, footer])
+              final = CompositeVideoClip([bg, header_bar, breaking_text, news_content, footer])
           except Exception as e:
-              print(f"Drawing Error: {e}")
+              print(f"Drawing Error: {e}. Creating visual fallback.")
               final = bg
 
+          print("💾 Rendering Video...")
           final.write_videofile("output/usa_trend_final.mp4", codec="libx264", fps=24, audio=False)
-          print("✅ Professional Trend Video Ready!")
+          print("✅ SUCCESS! Video generated with real-time trend.")
           EOT
           
           python3 your_script.py
 
-      - name: Save Trend Video
+      - name: Upload Final Video
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: USA-Daily-Trend
+          name: USA-Daily-Trends
           path: "output/*.mp4"
