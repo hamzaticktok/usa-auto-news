@@ -1,4 +1,4 @@
-name: Professional News Factory Fixed
+name: Ultimate News Factory PRO
 
 on:
   workflow_dispatch:
@@ -35,71 +35,83 @@ jobs:
           from bs4 import BeautifulSoup
           from gtts import gTTS
           import PIL.Image
+          if not hasattr(PIL.Image, 'ANTIALIAS'): PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
           
-          # حل مشكلة الخطأ: ربط الاختصار القديم بالجديد
-          if not hasattr(PIL.Image, 'ANTIALIAS'):
-              PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-          
-          # الآن نستورد MoviePy بعد حل مشكلة PIL
-          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip
+          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips
           import moviepy.video.fx.all as vfx
 
           def get_video(query):
               api_key = os.getenv('PEXELS_API_KEY')
-              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
               headers = {'Authorization': api_key}
+              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
               try:
                   r = requests.get(url, headers=headers, timeout=15)
                   return r.json()['videos'][0]['video_files'][0]['link']
               except:
                   return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
 
-          def create_pro_short(title, filename):
+          def create_clip(title, index):
               os.makedirs("temp", exist_ok=True)
-              # 1. الصوت
+              # 1. الصوت (المذيع)
               tts = gTTS(text=f"Breaking news. {title}", lang='en')
-              audio_path = f"temp/a_{filename}.mp3"
-              tts.save(audio_path)
-              audio = AudioFileClip(audio_path)
+              tts.save(f"temp/voice_{index}.mp3")
+              voice = AudioFileClip(f"temp/voice_{index}.mp3")
 
-              # 2. الفيديو
+              # 2. الفيديو مع زوم
               v_url = get_video(" ".join(title.split()[:2]))
-              v_path = f"temp/v_{filename}.mp4"
-              with open(v_path, "wb") as f: f.write(requests.get(v_url).content)
+              with open(f"temp/v_{index}.mp4", "wb") as f: f.write(requests.get(v_url).content)
               
-              # تحجيم الفيديو مع تأثير الزوم
-              clip = VideoFileClip(v_path).resize(height=1920)
-              clip = clip.crop(x_center=clip.w/2, width=1080).set_duration(audio.duration + 1)
-              
-              # إضافة حركة زوم هادئة لجعل الفيديو احترافياً
-              clip = clip.fx(vfx.resize, lambda t: 1 + 0.02 * t)
+              clip = VideoFileClip(f"temp/v_{index}.mp4").resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 1.5)
+              clip = clip.fx(vfx.resize, lambda t: 1 + 0.03 * t)
 
-              # 3. التصميم (الهوية البصرية)
-              bar = ColorClip(size=(1080, 420), color=(180, 0, 0)).set_opacity(0.9).set_position(('center', 1250)).set_duration(clip.duration)
+              # 3. الجرافيك
+              bg_bar = ColorClip(size=(1080, 450), color=(180, 0, 0)).set_opacity(0.85).set_position(('center', 1250)).set_duration(clip.duration)
               
-              # نص الخبر
-              txt = TextClip(title.upper(), fontsize=65, color='white', font='DejaVu-Sans-Bold', method='caption', size=(900, None)).set_position(('center', 1280)).set_duration(clip.duration)
+              # نص الخبر مع تصميم احترافي
+              txt = TextClip(title.upper(), fontsize=70, color='white', font='DejaVu-Sans-Bold', 
+                             method='caption', size=(950, None), stroke_color='black', stroke_width=2).set_position(('center', 1280)).set_duration(clip.duration)
               
-              # شريط علوي
-              header = TextClip("BREAKING NEWS", fontsize=90, color='yellow', font='DejaVu-Sans-Bold').set_position(('center', 200)).set_duration(clip.duration)
+              header = TextClip("LIVE NEWS", fontsize=100, color='yellow', font='DejaVu-Sans-Bold',
+                                stroke_color='black', stroke_width=2).set_position(('center', 200)).set_duration(clip.duration)
 
-              return CompositeVideoClip([clip, bar, txt, header]).set_audio(audio)
+              return CompositeVideoClip([clip, bg_bar, txt, header]).set_audio(voice)
 
           os.makedirs("output", exist_ok=True)
-          url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-          r = requests.get(url)
+          # جلب 4 أخبار
+          r = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
           soup = BeautifulSoup(r.content, 'xml')
-          trends = [item.title.text.split("-")[0].strip() for item in soup.find_all('item')[:2]]
+          trends = [item.title.text.split("-")[0].strip() for item in soup.find_all('item')[:4]]
 
+          clips = []
           for i, news in enumerate(trends):
-              print(f"Processing: {news}")
-              final = create_pro_short(news, f"n_{i}")
-              final.write_videofile(f"output/pro_short_{i+1}.mp4", fps=24, codec="libx264")
+              print(f"Processing Clip {i+1}...")
+              c = create_clip(news, i)
+              clips.append(c)
+              # حفظ الـ Shorts الفردية (أول خبرين)
+              if i < 2:
+                  c.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
+
+          # إنشاء الفيديو الطويل (تجميع كل المقاطع)
+          print("Creating Long Video...")
+          # إضافة موسيقى خلفية للفيديو الطويل فقط
+          long_video = concatenate_videoclips(clips, method="compose")
+          
+          # محاولة إضافة موسيقى خلفية (اختياري)
+          try:
+              music_url = "https://www.bensound.com/bensound-music/bensound-evolution.mp3"
+              with open("temp/music.mp3", "wb") as f: f.write(requests.get(music_url).content)
+              bg_music = AudioFileClip("temp/music.mp3").volumex(0.1).set_duration(long_video.duration)
+              final_audio = CompositeAudioClip([long_video.audio, bg_music])
+              long_video = long_video.set_audio(final_audio)
+          except:
+              pass
+
+          long_video.write_videofile("output/long_news_video.mp4", fps=24, codec="libx264")
           EOT
           python3 your_script.py
 
-      - name: Save Results
+      - name: Upload All Professional Content
         uses: actions/upload-artifact@v4
         with:
-          name: news-final-videos
+          name: news-professional-package
           path: output/*.mp4
