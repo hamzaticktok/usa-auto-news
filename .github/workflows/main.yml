@@ -1,4 +1,4 @@
-name: Human-Like News Factory
+name: Cinematic News Factory
 
 on:
   workflow_dispatch:
@@ -11,21 +11,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
-      - name: OS Fixes
+      - name: Install System Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick ffmpeg
           sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
 
-      - name: Install
+      - name: Install Libraries
         run: pip install requests beautifulsoup4 gtts moviepy==1.0.3 pillow
 
-      - name: Create Human-Like Video
+      - name: Generate Content
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
@@ -36,68 +36,66 @@ jobs:
           import PIL.Image
           if not hasattr(PIL.Image, 'ANTIALIAS'): PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
           
-          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips, CompositeAudioClip
+          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, concatenate_videoclips
 
           def get_video(query):
               api_key = os.getenv('PEXELS_API_KEY')
               url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
-              r = requests.get(url, headers={'Authorization': api_key})
-              try: return r.json()['videos'][0]['video_files'][0]['link']
-              except: return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+              try:
+                  r = requests.get(url, headers={'Authorization': api_key}, timeout=10)
+                  return r.json()['videos'][0]['video_files'][0]['link']
+              except:
+                  return "https://assets.mixkit.co/videos/preview/mixkit-news-studio-background-with-world-map-33303-large.mp4"
 
-          def make_pro_clip(title, i):
-              # 1. صوت مع وقفات طبيعية
+          def make_cinematic_clip(title, i):
               clean_title = title.split(' - ')[0]
-              tts = gTTS(text=f"Attention. . . {clean_title}. . . stay tuned for more.", lang='en', slow=False)
+              # صوت بشري مع وقفات
+              tts = gTTS(text=f"Breaking update. . . {clean_title}. . . for more details, stay with us.", lang='en')
               tts.save(f"v_{i}.mp3")
               voice = AudioFileClip(f"v_{i}.mp3")
 
-              # 2. فيديو مع حركة سينمائية
+              # فيديو مع زوم
               v_url = get_video(" ".join(clean_title.split()[:2]))
               with open(f"f_{i}.mp4", "wb") as f: f.write(requests.get(v_url).content)
               
-              bg = VideoFileClip(f"f_{i}.mp4").resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 2)
-              # تأثير التقريب البطيء (Ken Burns)
-              bg = bg.fl_image(lambda image: PIL.Image.fromarray(image).resize((int(1080*1.1), int(1920*1.1))).crop((20,20,1100,1940)).resize((1080,1920)))
+              bg = VideoFileClip(f"f_{i}.mp4").resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 1)
               
-              # 3. جرافيك القنوات الإخبارية
-              overlay = ColorClip(size=(1080, 500), color=(0,0,0)).set_opacity(0.6).set_position(('center', 1300)).set_duration(bg.duration)
-              red_line = ColorClip(size=(1080, 10), color=(255,0,0)).set_position(('center', 1300)).set_duration(bg.duration)
+              # جرافيك احترافي (Lower Third)
+              overlay = ColorClip(size=(1080, 480), color=(0,0,0)).set_opacity(0.7).set_position(('center', 1320)).set_duration(bg.duration)
+              line = ColorClip(size=(1080, 8), color=(255, 204, 0)).set_position(('center', 1320)).set_duration(bg.duration)
               
-              txt = TextClip(clean_title.upper(), fontsize=65, color='white', font='DejaVu-Sans-Bold', 
-                             method='caption', size=(900, None)).set_position(('center', 1350)).set_duration(bg.duration)
+              txt = TextClip(clean_title.upper(), fontsize=60, color='white', font='DejaVu-Sans-Bold', 
+                             method='caption', size=(920, None)).set_position(('center', 1380)).set_duration(bg.duration)
               
-              badge = TextClip("BREAKING", fontsize=50, color='white', bg_color='red', font='DejaVu-Sans-Bold').set_position((100, 200)).set_duration(bg.duration)
+              tag = TextClip(" TOP STORY ", fontsize=45, color='black', bg_color='yellow', font='DejaVu-Sans-Bold').set_position((80, 250)).set_duration(bg.duration)
 
-              return CompositeVideoClip([bg, overlay, red_line, txt, badge]).set_audio(voice)
+              return CompositeVideoClip([bg, overlay, line, txt, tag]).set_audio(voice)
 
-          # التنفيذ لـ 3 أخبار
           os.makedirs("output", exist_ok=True)
-          soup = BeautifulSoup(requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en").content, 'xml')
-          trends = [item.title.text for item in soup.find_all('item')[:3]]
+          # حل مشكلة الـ XML باستخدام html.parser
+          r = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
+          soup = BeautifulSoup(r.content, 'html.parser')
+          # جلب العناوين من وسوم <title> التي تلي <item>
+          items = soup.find_all('item')[:3]
+          trends = [item.title.text for item in items]
           
           all_clips = []
           for i, t in enumerate(trends):
-              c = make_pro_clip(t, i)
+              print(f"Creating Cinematic Clip {i+1}...")
+              c = make_cinematic_clip(t, i)
               all_clips.append(c)
-              if i < 2: c.write_videofile(f"output/short_{i+1}.mp4", fps=24)
+              if i < 2: # حفظ فيديوهين Shorts
+                  c.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
 
-          # الفيديو الطويل مع موسيقى خلفية
-          long_v = concatenate_videoclips(all_clips, method="compose")
-          # إضافة موسيقى أخبار (Background Music)
-          try:
-              m_url = "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3"
-              with open("music.mp3", "wb") as f: f.write(requests.get(m_url).content)
-              music = AudioFileClip("music.mp3").volumex(0.15).set_duration(long_v.duration)
-              long_v = long_v.set_audio(CompositeAudioClip([long_v.audio, music]))
-          except: pass
-          
-          long_v.write_videofile("output/long_video_pro.mp4", fps=24)
+          # إنشاء الفيديو الطويل (دمج كل المقاطع)
+          print("Merging into Long Video...")
+          final_long = concatenate_videoclips(all_clips, method="compose")
+          final_long.write_videofile("output/long_news_full.mp4", fps=24, codec="libx264")
           EOT
           python3 your_script.py
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: news-human-pack
+          name: news-cinematic-package
           path: output/*.mp4
