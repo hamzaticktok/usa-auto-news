@@ -1,4 +1,4 @@
-name: TrendsUSA Mega Fix v2
+name: TrendsUSA Bot - Final Test
 
 on:
   workflow_dispatch:
@@ -17,38 +17,35 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install System Dependencies
+      - name: Install Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          # تثبيت إصدار محدد لضمان التوافق
           pip install moviepy==1.0.3 imageio==2.25.1 proglog
 
-      - name: Emergency Script Creation & Execution
+      - name: Generate and Run Script
         run: |
           cat <<EOT > your_script.py
           import os, urllib.request
-          from moviepy.editor import VideoFileClip, concatenate_videoclips
+          from moviepy.editor import ColorClip
           
           os.makedirs("output", exist_ok=True)
-          os.makedirs("videos", exist_ok=True)
           
-          # تحميل فيديو تجريبي لضمان العمل
-          print("Downloading sample video...")
-          urllib.request.urlretrieve("https://github.com/selimb/mini-video/raw/main/video1.mp4", "videos/v1.mp4")
+          print("Creating a synthetic video for testing...")
+          # بدلاً من تحميل فيديو خارجي قد يتعطل، سننشئ فيديو ملون برمجياً للتجربة
+          clip = ColorClip(size=(720, 1280), color=[255, 0, 0], duration=5)
+          clip = clip.set_fps(24)
           
-          print("Processing video...")
-          clip = VideoFileClip("videos/v1.mp4").resize(width=720)
-          final = concatenate_videoclips([clip])
-          final.write_videofile("output/final_video.mp4", codec="libx264", audio_codec="aac", fps=24)
-          print("✅ Video created successfully!")
+          print("Writing video file...")
+          clip.write_videofile("output/final_video.mp4", codec="libx264", audio_codec="aac")
+          print("✅ Success! Video created inside output/ folder.")
           EOT
           
           python3 your_script.py
 
-      - name: Upload Result
+      - name: Upload Finished Video
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: video-output
-          path: "output/*.mp4"
+          name: trends-usa-test-video
+          path: output/
