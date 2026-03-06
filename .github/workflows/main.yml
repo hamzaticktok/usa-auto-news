@@ -1,4 +1,4 @@
-name: TrendsUSA Mega Fix
+name: TrendsUSA Mega Fix v2
 
 on:
   workflow_dispatch:
@@ -21,36 +21,34 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          pip install moviepy imageio[ffmpeg]
+          # تثبيت إصدار محدد لضمان التوافق
+          pip install moviepy==1.0.3 imageio==2.25.1 proglog
 
       - name: Emergency Script Creation & Execution
         run: |
-          # البحث عن الملف، وإذا لم يوجد نقوم بإنشائه فوراً
-          SCRIPT_PATH=$(find . -name "your_script.py" | head -n 1)
-          
-          if [ -z "$SCRIPT_PATH" ]; then
-            echo "⚠️ Script not found, creating emergency script..."
-            cat <<EOT > your_script.py
+          cat <<EOT > your_script.py
           import os, urllib.request
           from moviepy.editor import VideoFileClip, concatenate_videoclips
+          
           os.makedirs("output", exist_ok=True)
           os.makedirs("videos", exist_ok=True)
+          
           # تحميل فيديو تجريبي لضمان العمل
+          print("Downloading sample video...")
           urllib.request.urlretrieve("https://github.com/selimb/mini-video/raw/main/video1.mp4", "videos/v1.mp4")
+          
+          print("Processing video...")
           clip = VideoFileClip("videos/v1.mp4").resize(width=720)
           final = concatenate_videoclips([clip])
-          final.write_videofile("output/final_video.mp4", codec="libx264", fps=24)
+          final.write_videofile("output/final_video.mp4", codec="libx264", audio_codec="aac", fps=24)
           print("✅ Video created successfully!")
           EOT
-            SCRIPT_PATH="your_script.py"
-          fi
           
-          echo "🚀 Running script at: $SCRIPT_PATH"
-          python3 "$SCRIPT_PATH"
+          python3 your_script.py
 
       - name: Upload Result
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: video-output
-          path: "**/output/*.mp4"
+          path: "output/*.mp4"
