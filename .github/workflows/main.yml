@@ -1,9 +1,7 @@
-name: Auto Video News Generator
+name: News Video Generator with Pexels
 
 on:
-  workflow_dispatch: # تشغيل يدوي
-  schedule:
-    - cron: '0 */6 * * *' # تشغيل تلقائي كل 6 ساعات
+  workflow_dispatch: # للتشغيل اليدوي
 
 jobs:
   build:
@@ -22,7 +20,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick ffmpeg
-          # فك قفل الحماية عن ImageMagick للسماح بإنشاء النصوص
           sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
 
       - name: Install Python Libraries
@@ -30,6 +27,8 @@ jobs:
           pip install requests beautifulsoup4 lxml gtts moviepy==1.0.3 pillow
 
       - name: Generate Pro Video
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
           cat <<EOT > your_script.py
           import os, requests
@@ -50,30 +49,38 @@ jobs:
               except:
                   return "Breaking News: USA Update"
 
+          def get_pexels_video(query):
+              api_key = os.getenv('PEXELS_API_KEY')
+              headers = {'Authorization': api_key}
+              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
+              try:
+                  r = requests.get(url, headers=headers, timeout=15)
+                  data = r.json()
+                  if data['videos']:
+                      video_files = data['videos'][0]['video_files']
+                      return min(video_files, key=lambda x: abs(x['width'] - 1080))['link']
+              except:
+                  pass
+              return "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+
           trend_title = get_usa_trends()
+          search_query = " ".join(trend_title.split()[:2])
           os.makedirs("output", exist_ok=True)
           os.makedirs("temp", exist_ok=True)
 
-          # 1. الصوت
           tts = gTTS(text=f"Breaking news. {trend_title}", lang='en')
           tts.save("temp/voice.mp3")
           audio = AudioFileClip("temp/voice.mp3")
 
-          # 2. الفيديو الخلفية
-          video_url = "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
-          try:
-              r = requests.get(video_url, timeout=15)
-              with open("temp/bg.mp4", "wb") as f: f.write(r.content)
-              bg_clip = VideoFileClip("temp/bg.mp4").resize(height=1920)
-              bg_clip = bg_clip.crop(x_center=bg_clip.w/2, width=1080).set_duration(audio.duration + 2)
-          except Exception as e:
-              print(f"Error downloading video: {e}")
-              bg_clip = ColorClip(size=(1080, 1920), color=(20,20,20)).set_duration(audio.duration + 2)
+          video_link = get_pexels_video(search_query)
+          r = requests.get(video_link)
+          with open("temp/bg.mp4", "wb") as f: f.write(r.content)
+          
+          bg_clip = VideoFileClip("temp/bg.mp4").resize(height=1920).crop(x_center=540, width=1080).set_duration(audio.duration + 2)
 
-          # 3. النصوص
-          bar = ColorClip(size=(1080, 400), color=(200, 0, 0)).set_opacity(0.8).set_position(('center', 1300)).set_duration(bg_clip.duration)
-          txt = TextClip(trend_title.upper(), fontsize=65, color='white', font='DejaVu-Sans-Bold', method='caption', size=(900, None)).set_position(('center', 1350)).set_duration(bg_clip.duration)
-          header = TextClip("USA TRENDS", fontsize=90, color='yellow', font='DejaVu-Sans-Bold').set_position(('center', 200)).set_duration(bg_clip.duration)
+          bar = ColorClip(size=(1080, 450), color=(200, 0, 0)).set_opacity(0.8).set_position(('center', 1250)).set_duration(bg_clip.duration)
+          txt = TextClip(trend_title.upper(), fontsize=70, color='white', font='DejaVu-Sans-Bold', method='caption', size=(950, None)).set_position(('center', 1300)).set_duration(bg_clip.duration)
+          header = TextClip("USA TODAY", fontsize=100, color='yellow', font='DejaVu-Sans-Bold').set_position(('center', 200)).set_duration(bg_clip.duration)
 
           final = CompositeVideoClip([bg_clip, bar, txt, header]).set_audio(audio)
           final.write_videofile("output/final_trend.mp4", codec="libx264", audio_codec="aac", fps=24, threads=4)
