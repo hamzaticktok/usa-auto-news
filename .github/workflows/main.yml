@@ -1,4 +1,4 @@
-name: USA Trends Pro Creator (Voice + Video)
+name: USA Trends Final Pro
 
 on:
   workflow_dispatch:
@@ -27,12 +27,11 @@ jobs:
       - name: Generate Pro Video
         run: |
           cat <<EOT > your_script.py
-          import os, requests
+          import os, requests, random
           from bs4 import BeautifulSoup
           from gtts import gTTS
           from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip
 
-          # 1. جلب الترند الأمريكي الحقيقي
           def get_usa_trends():
               url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
               response = requests.get(url)
@@ -41,50 +40,55 @@ jobs:
               return item.title.text.split("-")[0].strip()
 
           trend_title = get_usa_trends()
-          print(f"🔥 Today's Trend: {trend_title}")
-
           os.makedirs("output", exist_ok=True)
           os.makedirs("temp", exist_ok=True)
 
-          # 2. إنشاء التعليق الصوتي (Voiceover)
-          voice_text = f"Breaking news in the United States. {trend_title}. Stay tuned for more updates on Trends USA 25."
+          # 1. توليد الصوت
+          voice_text = f"Breaking news. {trend_title}. Subscribe to Trends USA 25 for more."
           tts = gTTS(text=voice_text, lang='en', slow=False)
           tts.save("temp/voice.mp3")
           audio = AudioFileClip("temp/voice.mp3")
 
-          # 3. جلب فيديو خلفية (استخدام فيديو افتراضي عالي الجودة)
-          # سنستخدم فيديو "أفق مدينة" أو "علم أمريكا" من رابط مباشر مستقر
-          video_url = "https://v.ftcdn.net/02/10/34/03/700_F_210340338_S9y9vP2S0qO2fD0P3F4x5J7z9Q7zL6Z6_ST.mp4"
-          try:
-              r = requests.get(video_url, stream=True)
-              with open("temp/bg_video.mp4", "wb") as f:
-                  for chunk in r.iter_content(8192): f.write(chunk)
-              bg_clip = VideoFileClip("temp/bg_video.mp4").resize(height=1920).crop(x_center=540, width=1080)
-          except:
+          # 2. جلب فيديو خلفية حقيقي (روابط مباشرة ومضمونة)
+          # سنستخدم قائمة روابط احتياطية في حال فشل أحدها
+          video_sources = [
+              "https://assets.mixkit.co/videos/preview/mixkit-flag-of-the-united-states-of-america-31354-large.mp4",
+              "https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-a-news-report-background-33303-large.mp4"
+          ]
+          
+          video_path = "temp/bg_video.mp4"
+          for url in video_sources:
+              try:
+                  print(f"Trying to download: {url}")
+                  r = requests.get(url, timeout=15)
+                  with open(video_path, "wb") as f: f.write(r.content)
+                  bg_clip = VideoFileClip(video_path)
+                  break
+              except:
+                  continue
+          else:
+              # إذا فشلت كل الروابط، ننشئ خلفية ملونة كحل أخير
               bg_clip = ColorClip(size=(1080, 1920), color=(20, 20, 20))
 
-          bg_clip = bg_clip.set_duration(audio.duration + 2)
+          # ضبط مقاسات الفيديو ليكون Shorts (9:16)
+          bg_clip = bg_clip.resize(height=1920).crop(x_center=bg_clip.w/2, width=1080).set_duration(audio.duration + 2)
 
-          # 4. إضافة النصوص الاحترافية
+          # 3. النصوص الاحترافية
           try:
-              # شريط الخبر السفلي
-              bar = ColorClip(size=(1080, 350), color=(200, 0, 0)).set_opacity(0.8).set_position(('center', 1400)).set_duration(bg_clip.duration)
+              # شريط الخبر (Headline Bar)
+              bar = ColorClip(size=(1080, 400), color=(200, 0, 0)).set_opacity(0.8).set_position(('center', 1300)).set_duration(bg_clip.duration)
               
-              news_txt = TextClip(trend_title, fontsize=70, color='white', font='Arial-Bold', method='caption', size=(900, None))
-              news_txt = news_txt.set_position(('center', 1450)).set_duration(bg_clip.duration)
+              news_txt = TextClip(trend_title.upper(), fontsize=70, color='white', font='Arial-Bold', method='caption', size=(950, None))
+              news_txt = news_txt.set_position(('center', 1350)).set_duration(bg_clip.duration)
               
-              header = TextClip("BREAKING NEWS", fontsize=100, color='yellow', font='Arial-Bold').set_position(('center', 200)).set_duration(bg_clip.duration)
+              logo = TextClip("TRENDS USA 25", fontsize=50, color='yellow', font='Arial-Bold').set_position(('center', 200)).set_duration(bg_clip.duration)
 
-              final_video = CompositeVideoClip([bg_clip, bar, news_txt, header])
+              final_video = CompositeVideoClip([bg_clip, bar, news_txt, logo])
           except:
               final_video = bg_clip
 
-          # 5. دمج الصوت مع الفيديو
           final_video = final_video.set_audio(audio)
-          
-          print("💾 Exporting Final Professional Video...")
           final_video.write_videofile("output/final_trend.mp4", codec="libx264", audio_codec="aac", fps=24)
-          print("✅ Done!")
           EOT
           
           python3 your_script.py
@@ -92,5 +96,5 @@ jobs:
       - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
-          name: USA-Pro-Shorts
-          path: "output/final_trend.mp4"
+          name: USA-Daily-Shorts
+          path: output/final_trend.mp4
