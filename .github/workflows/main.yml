@@ -1,115 +1,97 @@
-name: 4-Shorts Pro Factory with Music
+import os, requests, random, textwrap, asyncio
+from bs4 import BeautifulSoup
+import edge_tts
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'): PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+from moviepy.editor import *
+from moviepy.config import change_settings
 
-on:
-  workflow_dispatch:
+# إعداد ImageMagick
+change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+class ProShortsFactory:
+    def __init__(self):
+        self.api_key = os.getenv('PEXELS_API_KEY')
+        self.output_dir = "output"
+        # اختيار صوت احترافي (يمكنك تغيير en-US-ChristopherNeural إلى en-US-GuyNeural أو en-GB-RyanNeural)
+        self.voice = "en-US-ChristopherNeural" 
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+    async def generate_voice(self, text, output_path):
+        """توليد صوت واقعي باستخدام الذكاء الاصطناعي من مايكروسوفت"""
+        communicate = edge_tts.Communicate(text, self.voice)
+        await communicate.save(output_path)
+
+    def get_premium_video(self, query):
+        headers = {'Authorization': self.api_key}
+        # إضافة كلمات دقيقية لضمان جودة الفيديو
+        search_query = f"{query} cinematic"
+        url = f"https://api.pexels.com/videos/search?query={search_query}&per_page=15&orientation=portrait"
+        try:
+            r = requests.get(url, headers=headers, timeout=15)
+            vids = r.json().get('videos', [])
+            if vids:
+                return random.choice(vids)['video_files'][0]['link']
+            return "https://assets.mixkit.co/videos/preview/mixkit-global-technologies-and-world-map-background-33306-large.mp4"
+        except:
+            return "https://assets.mixkit.co/videos/preview/mixkit-global-technologies-and-world-map-background-33306-large.mp4"
+
+    async def create_video(self, title, index):
+        print(f"💎 Creating Premium Short {index+1}...")
+        clean_title = title.split(' - ')[0].replace('"', '').strip()
+        
+        # 1. الصوت الواقعي
+        voice_path = f"voice_{index}.mp3"
+        script_text = f"Breaking News update. {clean_title}. Stay tuned for more details."
+        await self.generate_voice(script_text, voice_path)
+        audio_v = AudioFileClip(voice_path)
+
+        # 2. الفيديو مع تأثير Zoom-In السينمائي
+        video_url = self.get_premium_video(clean_title.split()[0])
+        video_path = f"raw_{index}.mp4"
+        with open(video_path, "wb") as f: f.write(requests.get(video_url).content)
+        
+        # ضبط المقاسات وتأثير الحركة التلقائية
+        duration = audio_v.duration + 1.5
+        clip = VideoFileClip(video_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(duration)
+        clip = clip.fx(vfx.resize, lambda t: 1 + 0.03 * t) # تكبير تدريجي هادئ
+
+        # 3. التصميم البصري (Modern UI)
+        # شريط أحمر علوي احترافي
+        top_bar = ColorClip(size=(1080, 120), color=(200, 0, 0)).set_position(('center', 150)).set_opacity(0.9).set_duration(duration)
+        top_text = TextClip("🔴 BREAKING NEWS", fontsize=60, color='white', font='Arial-Bold').set_position(('center', 175)).set_duration(duration)
+
+        # النص الرئيسي (Headline) مع خلفية متدرجة سوداء
+        headline_bg = ColorClip(size=(1080, 500), color=(0, 0, 0)).set_opacity(0.7).set_position(('center', 1300)).set_duration(duration)
+        
+        wrapped_text = "\n".join(textwrap.wrap(clean_title.upper(), width=22))
+        headline_text = TextClip(wrapped_text, fontsize=70, color='white', font='Arial-Bold', 
+                                 method='caption', size=(950, None), align='center').set_position(('center', 1350)).set_duration(duration)
+
+        # 4. الدمج النهائي
+        final_video = CompositeVideoClip([clip, top_bar, top_text, headline_bg, headline_text], size=(1080, 1920))
+        final_video = final_video.set_audio(audio_v)
+        
+        output_file = f"{self.output_dir}/Viral_Short_{index+1}.mp4"
+        final_video.write_videofile(output_file, fps=24, codec="libx264", audio_codec="aac", threads=4)
+        
+        # تنظيف الذاكرة (مهم جداً في GitHub Actions)
+        final_video.close()
+        clip.close()
+        audio_v.close()
+
+async def main():
+    factory = ProShortsFactory()
+    # جلب الأخبار
+    r = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
+    soup = BeautifulSoup(r.content, 'xml')
+    items = soup.find_all('item')[:4]
     
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    for i, item in enumerate(items):
+        try:
+            await factory.create_video(item.title.text, i)
+        except Exception as e:
+            print(f"⚠️ Failed to create video {i}: {e}")
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-
-      - name: Install System Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y imagemagick ffmpeg
-          sudo sed -i 's/domain="path" rights="none" pattern="@\*"/domain="path" rights="read|write" pattern="@*"/g' /etc/ImageMagick-6/policy.xml
-
-      - name: Install Libraries
-        run: pip install requests beautifulsoup4 gtts moviepy==1.0.3 pillow
-
-      - name: Generate 4 Professional Shorts
-        env:
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-        run: |
-          cat <<EOT > your_script.py
-          import os, requests, random
-          from bs4 import BeautifulSoup
-          from gtts import gTTS
-          import PIL.Image
-          if not hasattr(PIL.Image, 'ANTIALIAS'): PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-          from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip, ColorClip, CompositeAudioClip
-
-          # قائمة بموسيقى خلفية متنوعة (روابط مباشرة)
-          MUSIC_URLS = [
-              "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", # نمط 1
-              "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", # نمط 2
-              "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", # نمط 3
-              "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"  # نمط 4
-          ]
-
-          def get_video(query):
-              api_key = os.getenv('PEXELS_API_KEY')
-              url = f"https://api.pexels.com/videos/search?query={query}&per_page=1&orientation=portrait"
-              try:
-                  r = requests.get(url, headers={'Authorization': api_key}, timeout=10)
-                  return r.json()['videos'][0]['video_files'][0]['link']
-              except:
-                  return "https://assets.mixkit.co/videos/preview/mixkit-news-studio-background-with-world-map-33303-large.mp4"
-
-          def create_pro_short(title, i):
-              clean_title = title.split(' - ')[0].replace('"', '').strip()
-              
-              # استخراج الكلمات المفتاحية للوصف
-              tags = f"#News #Trending #{clean_title.split()[0]} #BreakingNews"
-              print(f"\n✅ Video {i+1} Ready for Upload:")
-              print(f"📌 Title: {clean_title}")
-              print(f"🏷️ Hashtags: {tags}\n")
-
-              # 1. الصوت (المذيع)
-              tts = gTTS(text=f"Breaking update. . . {clean_title}. . . Stay informed with us.", lang='en')
-              voice_path = f"v_{i}.mp3"
-              tts.save(voice_path)
-              voice = AudioFileClip(voice_path)
-
-              # 2. الموسيقى الخلفية (متغيرة لكل فيديو)
-              try:
-                  m_path = f"m_{i}.mp3"
-                  with open(m_path, "wb") as f: f.write(requests.get(MUSIC_URLS[i]).content)
-                  bg_music = AudioFileClip(m_path).volumex(0.12).set_duration(voice.duration + 1.5)
-                  final_audio = CompositeAudioClip([voice, bg_music])
-              except:
-                  final_audio = voice
-
-              # 3. جلب وتجهيز الفيديو
-              v_url = get_video(" ".join(clean_title.split()[:2]))
-              v_path = f"f_{i}.mp4"
-              with open(v_path, "wb") as f: f.write(requests.get(v_url).content)
-              
-              clip = VideoFileClip(v_path).resize(height=1920).crop(x_center=540, width=1080).set_duration(voice.duration + 1.5)
-              
-              # 4. الجرافيك الاحترافي
-              overlay = ColorClip(size=(1080, 500), color=(0,0,0)).set_opacity(0.7).set_position(('center', 1300)).set_duration(clip.duration)
-              gold_line = ColorClip(size=(1080, 12), color=(255, 215, 0)).set_position(('center', 1300)).set_duration(clip.duration)
-              
-              txt = TextClip(clean_title.upper(), fontsize=65, color='white', font='DejaVu-Sans-Bold', 
-                             method='caption', size=(920, None)).set_position(('center', 1360)).set_duration(clip.duration)
-              
-              badge = TextClip(" BREAKING ", fontsize=50, color='white', bg_color='red', font='DejaVu-Sans-Bold').set_position((80, 220)).set_duration(clip.duration)
-
-              final_video = CompositeVideoClip([clip, overlay, gold_line, txt, badge]).set_audio(final_audio)
-              final_video.write_videofile(f"output/short_{i+1}.mp4", fps=24, codec="libx264")
-
-          os.makedirs("output", exist_ok=True)
-          r = requests.get("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
-          soup = BeautifulSoup(r.content, 'html.parser')
-          items = soup.find_all('item')[:4]
-          
-          for i, item in enumerate(items):
-              print(f"🚀 Working on Short {i+1}...")
-              create_pro_short(item.title.text, i)
-          EOT
-          python3 your_script.py
-
-      - name: Upload 4 Professional Shorts
-        uses: actions/upload-artifact@v4
-        with:
-          name: 4-Shorts-Pro-Music-Package
-          path: output/*.mp4
+if __name__ == "__main__":
+    asyncio.run(main())
