@@ -1,0 +1,27 @@
+- name: Generate and Run Script
+        run: |
+          cat <<EOT > your_script.py
+          import os, urllib.request
+          from moviepy.editor import VideoFileClip, AudioFileClip
+
+          os.makedirs("output", exist_ok=True)
+          os.makedirs("temp", exist_ok=True)
+
+          # روابط فيديوهات وموسيقى حقيقية (عينة)
+          v_url = "https://www.sample-videos.com/video312/mp4/720/big_buck_bunny_720p_1mb.mp4"
+          m_url = "https://www.computerhope.com/jargon/m/example.mp3"
+
+          print("Downloading real assets...")
+          urllib.request.urlretrieve(v_url, "temp/v.mp4")
+          urllib.request.urlretrieve(m_url, "temp/m.mp3")
+
+          print("Processing real video...")
+          clip = VideoFileClip("temp/v.mp4").resize(height=1280) # ليكون مناسب لـ Shorts
+          audio = AudioFileClip("temp/m.mp3").set_duration(clip.duration)
+          
+          final = clip.set_audio(audio)
+          final.write_videofile("output/final_video.mp4", codec="libx264", audio_codec="aac", fps=24)
+          print("✅ Success! Content video created.")
+          EOT
+
+          python3 your_script.py
